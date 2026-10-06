@@ -380,3 +380,110 @@ export async function createCategory(name: string, description?: string) {
   });
 }
 
+// ============================================================
+// BULK IMPORT PRODUCTS (CSV / Excel)
+// ============================================================
+
+export async function bulkCreateProducts(items: {
+  sku: string;
+  name: string;
+  fragranceName?: string;
+  categoryName?: string;
+  unit?: string;
+  costPrice: number;
+  sellingPrice: number;
+  initialStock?: number;
+  minimumStock?: number;
+}[]) {
+  const user = await requireRole("OWNER", "ADMIN");
+
+  if (!items || items.length === 0) {
+    return { success: false, error: "Data impor kosong" };
+  }
+
+  let createdCount = 0;
+  let updatedCount = 0;
+
+  for (const item of items) {
+    if (!item.name || !item.sku) continue;
+
+    // Find or create category if provided
+    let categoryId: string | null = null;
+    if (item.categoryName) {
+      let cat = await prisma.category.findUnique({
+        where: { name: item.categoryName.trim() },
+      });
+      if (!cat) {
+        cat = await prisma.category.create({
+          data: { name: item.categoryName.trim() },
+        });
+      }
+      categoryId = cat.id;
+    }
+
+    const existing = await prisma.product.findUnique({
+      where: { sku: item.sku },
+    });
+
+    if (existing) {
+      // Update existing
+      await prisma.product.update({
+        where: { id: existing.id },
+        data: {
+          name: item.name,
+          fragranceName: item.fragranceName || existing.fragranceName,
+          costPrice: new Prisma.Decimal(item.costPrice || 0),
+          sellingPrice: new Prisma.Decimal(item.sellingPrice || 0),
+          minimumStock: new Prisma.Decimal(item.minimumStock || 10),
+          ...(categoryId ? { categoryId } : {}),
+        },
+      });
+      updatedCount++;
+    } else {
+      // Create new
+      const prod = await prisma.product.create({
+        data: {
+          sku: item.sku,
+          name: item.name,
+          fragranceName: item.fragranceName || null,
+          category: categoryId ? undefined : undefined,
+          categoryId: categoryId,
+          unit: item.unit || "ml",
+          costPrice: new Prisma.Decimal(item.costPrice || 0),
+          sellingPrice: new Prisma.Decimal(item.sellingPrice || 0),
+          currentStock: new Prisma.Decimal(item.initialStock || 0),
+          minimumStock: new Prisma.Decimal(item.minimumStock || 20),
+          isActive: true,
+        },
+      });
+
+      if (item.initialStock && item.initialStock > 0) {
+        await prisma.stockMovement.create({
+          data: {
+            productId: prod.id,
+            movementType: "INITIAL_STOCK",
+            quantity: new Prisma.Decimal(item.initialStock),
+            previousStock: new Prisma.Decimal(0),
+            newStock: new Prisma.Decimal(item.initialStock),
+            referenceType: "PRODUCT",
+            referenceId: prod.id,
+            userId: user.id,
+            notes: "Impor bulk Excel/CSV",
+          },
+        });
+      }
+
+      createdCount++;
+    }
+  }
+
+  await createAuditLog({
+    userId: user.id,
+    action: AUDIT_ACTIONS.PRODUCT_CREATE,
+    entity: "product",
+    newValue: { bulkImportCount: createdCount + updatedCount, createdCount, updatedCount },
+  });
+
+  return { success: true, createdCount, updatedCount };
+}
+

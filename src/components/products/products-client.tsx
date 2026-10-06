@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import {
   Package,
   Plus,
@@ -14,12 +14,13 @@ import {
   CheckCircle,
   X,
   FileSpreadsheet,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatNumber } from "@/lib/utils";
-import { createProduct, updateProduct } from "@/lib/actions/products";
+import { createProduct, updateProduct, bulkCreateProducts } from "@/lib/actions/products";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 
@@ -79,6 +80,8 @@ export function ProductsClient({
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImporting, setIsImporting] = useState(false);
 
   // Filtered Products
   const filteredProducts = useMemo(() => {
@@ -267,8 +270,88 @@ export function ProductsClient({
     XLSX.writeFile(workbook, `Katalog_Produk_AromaPOS_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
+  // CSV/Excel Import Handler
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      let parsedRows: Record<string, unknown>[] = [];
+
+      if (file.name.endsWith(".csv")) {
+        const text = await file.text();
+        const result = Papa.parse<Record<string, unknown>>(text, {
+          header: true,
+          skipEmptyLines: true,
+        });
+        parsedRows = result.data;
+      } else {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        parsedRows = XLSX.utils.sheet_to_json(sheet);
+      }
+
+      if (parsedRows.length === 0) {
+        alert("File kosong atau format tidak sesuai");
+        setIsImporting(false);
+        return;
+      }
+
+      // Map rows to schema items
+      const itemsToImport = parsedRows.map((row) => {
+        const sku = String(row.SKU || row.sku || row.Kode || row.code || `PRF-${Date.now()}-${Math.floor(Math.random() * 1000)}`);
+        const name = String(row.Nama_Produk || row.Nama || row.name || row.Name || sku);
+        const fragranceName = row.Aroma || row.fragranceName || row.fragrance ? String(row.Aroma || row.fragranceName || row.fragrance) : undefined;
+        const categoryName = row.Kategori || row.category || row.categoryName ? String(row.Kategori || row.category || row.categoryName) : undefined;
+        const unit = String(row.Satuan || row.unit || "ml");
+        const costPrice = Number(row.Harga_Beli_HPP || row.Harga_Beli || row.HPP || row.costPrice || 0);
+        const sellingPrice = Number(row.Harga_Jual || row.sellingPrice || row.Price || row.harga || 0);
+        const initialStock = Number(row.Stok_Sekarang || row.Stok || row.currentStock || row.stock || 0);
+        const minimumStock = Number(row.Stok_Minimum || row.minimumStock || 20);
+
+        return {
+          sku,
+          name,
+          fragranceName,
+          categoryName,
+          unit,
+          costPrice,
+          sellingPrice,
+          initialStock,
+          minimumStock,
+        };
+      });
+
+      const res = await bulkCreateProducts(itemsToImport);
+      if (res.success) {
+        alert(`Berhasil mengimpor produk!\n- Baru ditambahkan: ${res.createdCount}\n- Diperbarui: ${res.updatedCount}`);
+        window.location.reload();
+      } else {
+        alert(`Gagal impor: ${res.error}`);
+      }
+    } catch (err: unknown) {
+      console.error("Error parsing import file:", err);
+      alert("Terjadi kesalahan saat membaca file spreadsheet.");
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Hidden file input for import */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleImportFile}
+        accept=".csv,.xlsx,.xls"
+        className="hidden"
+      />
+
       {/* Page Title & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -281,6 +364,23 @@ export function ProductsClient({
         </div>
 
         <div className="flex items-center gap-2">
+          {isOwnerOrAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isImporting}
+              onClick={() => fileInputRef.current?.click()}
+              className="rounded-xl flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+            >
+              {isImporting ? (
+                <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+              ) : (
+                <Upload className="h-4 w-4 text-indigo-600" />
+              )}
+              {isImporting ? "Mengimpor..." : "Impor CSV / Excel"}
+            </Button>
+          )}
+
           <Button
             variant="outline"
             size="sm"
