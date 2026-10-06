@@ -118,7 +118,7 @@ export function ReceiptModal({
             {/* Store Branding */}
             <div className="text-center pb-3 border-b border-dashed border-slate-300 dark:border-slate-700">
               <h3 className="font-bold text-sm text-slate-900 dark:text-white uppercase tracking-wider">
-                {storeSettings?.storeName || "AROMA LUXURY REFILL"}
+                {storeSettings?.storeName || "MISYourPOS"}
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                 {storeSettings?.address || "Jl. Malioboro No. 45, Yogyakarta"}

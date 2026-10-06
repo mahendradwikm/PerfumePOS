@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   BarChart,
   Bar,
@@ -29,9 +30,9 @@ import {
   ArrowUpRight,
   ArrowDownRight,
 } from "lucide-react";
+import { exportReportXlsx } from "@/lib/actions/export-report";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import * as XLSX from "xlsx";
 
 interface DashboardKPIs {
   grossSales: number;
@@ -58,6 +59,8 @@ interface ReportsClientProps {
   salesTrends: any[];
   paymentBreakdown: any[];
   categories: any[];
+  period: "day" | "week" | "month" | "custom";
+  customDate?: string;
 }
 
 export function ReportsClient({
@@ -67,54 +70,40 @@ export function ReportsClient({
   salesTrends,
   paymentBreakdown,
   categories,
+  period,
+  customDate,
 }: ReportsClientProps) {
   const [kpis, setKPIs] = useState<DashboardKPIs>(initialKPIs);
-  const [dateRange, setDateRange] = useState<"today" | "week" | "month" | "all">("today");
+  const router = useRouter();
+  const [customDateInput, setCustomDateInput] = useState(customDate || new Date().toISOString().slice(0, 10));
+  const [exportOpen, setExportOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const [prevKPIs, setPrevKPIs] = useState(initialKPIs);
+  if (prevKPIs !== initialKPIs) {
+    setPrevKPIs(initialKPIs);
+    setKPIs(initialKPIs);
+  }
 
   // Colors for charts
   const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4"];
 
-  // Excel Export
-  const handleExportFullReport = () => {
-    // Sheet 1: KPIs
-    const kpiData = [
-      { Indikator: "Penjualan Kotor (Gross Sales)", Nilai: kpis.grossSales },
-      { Indikator: "Potongan Diskon", Nilai: -kpis.discountAmount },
-      { Indikator: "Penjualan Bersih (Net Sales)", Nilai: kpis.netSales },
-      { Indikator: "Penjualan Tunai", Nilai: kpis.cashSales },
-      { Indikator: "Penjualan QRIS", Nilai: kpis.qrisSales },
-      { Indikator: "Harga Pokok Penjualan (HPP / COGS)", Nilai: -kpis.cogs },
-      { Indikator: "Laba Kotor (Gross Profit)", Nilai: kpis.grossProfit },
-      { Indikator: "Margin Laba Kotor", Nilai: `${kpis.grossProfitMargin}%` },
-      { Indikator: "Total Beban Operasional", Nilai: -kpis.operatingExpenses },
-      { Indikator: "Total Pengembalian Dana (Refund)", Nilai: -kpis.refundsTotal },
-      { Indikator: "Laba Bersih Toko (Net Profit)", Nilai: kpis.netProfit },
-      { Indikator: "Margin Laba Bersih", Nilai: `${kpis.netProfitMargin}%` },
-      { Indikator: "Jumlah Transaksi", Nilai: kpis.transactionCount },
-      { Indikator: "Rata-Rata Nilai Belanja (AOV)", Nilai: kpis.averageOrderValue },
-      { Indikator: "Total Unit / ml Terjual", Nilai: kpis.unitsSold },
-    ];
-
-    // Sheet 2: Top Products
-    const topProdData = topProducts.map((p, idx) => ({
-      Ranking: idx + 1,
-      Nama_Produk: p.name,
-      SKU: p.sku,
-      Kategori: p.categoryName || "-",
-      Total_Terjual: p.totalQuantity,
-      Satuan: p.unit,
-      Total_Omset: p.totalRevenue,
-      Total_Laba: p.profit,
-    }));
-
-    const wb = XLSX.utils.book_new();
-    const ws1 = XLSX.utils.json_to_sheet(kpiData);
-    const ws2 = XLSX.utils.json_to_sheet(topProdData);
-
-    XLSX.utils.book_append_sheet(wb, ws1, "Laporan Keuangan");
-    XLSX.utils.book_append_sheet(wb, ws2, "Produk Terlaris");
-
-    XLSX.writeFile(wb, `Laporan_Keuangan_AromaPOS_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  // Excel Export: delegated to the server action for styled, chart-embedded output
+  const handleExport = async (which: "week" | "month" | "year" | "day") => {
+    setIsExporting(true);
+    try {
+      const res = await exportReportXlsx(which);
+      const a = document.createElement("a");
+      a.href = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${res.base64}`;
+      a.download = res.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      alert("Gagal mengekspor laporan.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -131,15 +120,78 @@ export function ReportsClient({
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportFullReport}
-            className="rounded-xl flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
-          >
-            <Download className="h-4 w-4 text-emerald-600" />
-            Ekspor Laporan Lengkap
-          </Button>
+          {/* Date period filter + calendar in one container */}
+          <div className="flex items-center gap-1.5 rounded-2xl border-2 border-slate-200 dark:border-slate-800 p-1.5 bg-white dark:bg-slate-900">
+            {([
+              { key: "day", label: "Hari Ini" },
+              { key: "week", label: "Minggu Ini" },
+              { key: "month", label: "Bulan Ini" },
+            ] as const).map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => router.push(`/reports?period=${opt.key}`)}
+                className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
+                  period === opt.key
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+
+            <span className="w-px h-7 bg-slate-200 dark:bg-slate-800" />
+
+            <input
+              type="date"
+              value={customDateInput}
+              aria-label="Pilih tanggal"
+              onChange={(e) => {
+                const val = e.target.value;
+                setCustomDateInput(val);
+                if (val) {
+                  router.push(`/reports?period=custom&date=${val}`);
+                }
+              }}
+              className={`bg-transparent text-sm font-bold outline-none px-3 py-2 rounded-xl cursor-pointer h-11 ${
+                period === "custom"
+                  ? "text-indigo-600 dark:text-indigo-300"
+                  : "text-slate-600 dark:text-slate-300"
+              }`}
+            />
+          </div>
+
+          <div className="relative">
+            <Button
+              variant="outline"
+              size="default"
+              onClick={() => setExportOpen((v) => !v)}
+              className="rounded-2xl flex items-center gap-2 text-sm font-bold cursor-pointer"
+            >
+              <Download className="h-5 w-5 text-emerald-600" />
+              {isExporting ? "Mengekspor..." : "Ekspor Laporan Lengkap"}
+            </Button>
+            {exportOpen && (
+              <div className="absolute right-0 mt-2 w-60 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl z-30 overflow-hidden">
+                {[
+                  { key: "week", label: "Berdasarkan Minggu" },
+                  { key: "month", label: "Berdasarkan Bulan" },
+                  { key: "year", label: "Berdasarkan Tahun" },
+                ].map((opt) => (
+                  <button
+                    key={opt.key}
+                    onClick={() => {
+                      setExportOpen(false);
+                      handleExport(opt.key as "week" | "month" | "year");
+                    }}
+                    className="block w-full text-left px-4 py-3.5 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

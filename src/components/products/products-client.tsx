@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   Package,
   Plus,
@@ -58,6 +59,14 @@ export function ProductsClient({
   isOwnerOrAdmin,
 }: ProductsClientProps) {
   const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [prevInitialProducts, setPrevInitialProducts] = useState(initialProducts);
+  const router = useRouter();
+
+  if (prevInitialProducts !== initialProducts) {
+    setPrevInitialProducts(initialProducts);
+    setProducts(initialProducts);
+  }
+
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [stockStatusFilter, setStockStatusFilter] = useState("ALL");
@@ -227,6 +236,7 @@ export function ProductsClient({
       }
 
       setIsModalOpen(false);
+      router.refresh();
     } catch (err: any) {
       setFormError(err?.message || "Terjadi kesalahan sistem.");
     } finally {
@@ -243,6 +253,7 @@ export function ProductsClient({
       setProducts((prev) =>
         prev.map((it) => (it.id === p.id ? { ...it, isActive: newStatus } : it))
       );
+      router.refresh();
     } catch (err) {
       alert("Gagal mengubah status aktif produk");
     }
@@ -267,7 +278,7 @@ export function ProductsClient({
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Katalog Produk");
-    XLSX.writeFile(workbook, `Katalog_Produk_AromaPOS_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(workbook, `Katalog_Produk_MISYourPOS_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   // CSV/Excel Import Handler

@@ -1,10 +1,11 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import prisma from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { createSaleSchema, type CreateSaleInput } from "@/lib/validators";
 import { createAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
-import { generateTransactionNumber } from "@/lib/utils";
+import { generateTransactionNumber, serializeDecimal } from "@/lib/utils";
 import { Prisma } from "@prisma/client";
 
 // ============================================================
@@ -182,6 +183,8 @@ export async function createSale(input: CreateSaleInput) {
       },
     });
 
+    revalidatePath("/", "layout");
+
     return {
       success: true,
       data: {
@@ -266,7 +269,7 @@ export async function getSales(params?: {
     prisma.sale.count({ where }),
   ]);
 
-  return {
+  return serializeDecimal({
     sales: sales.map((s) => ({
       ...s,
       subtotal: Number(s.subtotal),
@@ -289,7 +292,7 @@ export async function getSales(params?: {
     page,
     limit,
     totalPages: Math.ceil(total / limit),
-  };
+  });
 }
 
 // ============================================================
@@ -319,7 +322,7 @@ export async function getSaleDetail(id: string) {
 
   if (!sale) return null;
 
-  return {
+  return serializeDecimal({
     ...sale,
     subtotal: Number(sale.subtotal),
     discountAmount: Number(sale.discountAmount),
@@ -346,7 +349,7 @@ export async function getSaleDetail(id: string) {
         lineTotal: Number(ri.lineTotal),
       })),
     })),
-  };
+  });
 }
 
 // ============================================================
@@ -433,7 +436,8 @@ export async function voidSale(saleId: string, reason: string) {
       newValue: { reason },
     });
 
-    return { success: true, data: result };
+    revalidatePath("/", "layout");
+    return { success: true, data: serializeDecimal(result) };
   } catch (error) {
     console.error("Void sale error:", error);
     return {

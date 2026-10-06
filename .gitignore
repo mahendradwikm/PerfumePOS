@@ -30,8 +30,21 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (keep the example, never commit real secrets)
 .env*
+!.env.example
+
+# local database (embedded PostgreSQL data files — NEVER commit)
+# these are binary data files of your live database (products, sales, users)
+/prisma/pg-cluster/
+/prisma/pgdata/
+
+# local tools / binaries (e.g. cloudflared.exe ~55MB)
+/tools/
+
+# stray generated files
+/*.xlsx
+debug-export.*
 
 # vercel
 .vercel

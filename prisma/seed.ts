@@ -8,11 +8,11 @@ async function main() {
 
   // 1. Store Settings (Key-Value)
   const settings = [
-    { key: "store_name", value: "Aroma Luxury Refill Parfumerie", label: "Nama Toko", type: "string" },
+    { key: "store_name", value: "MISYourPOS Parfumerie", label: "Nama Toko", type: "string" },
     { key: "store_address", value: "Jl. Malioboro No. 45, Danurejan, Yogyakarta", label: "Alamat Toko", type: "string" },
     { key: "store_phone", value: "0812-3456-7890", label: "Nomor Telepon Toko", type: "string" },
     { key: "store_email", value: "info@aromaperfume.com", label: "Email Toko", type: "string" },
-    { key: "receipt_header", value: "AROMA LUXURY REFILL\nSolusi Wangi Mewah Berkualitas", label: "Header Struk", type: "string" },
+    { key: "receipt_header", value: "MISYourPOS\nSolusi Wangi Mewah Berkualitas", label: "Header Struk", type: "string" },
     { key: "receipt_footer", value: "Terima kasih atas kunjungan Anda!\nWangi Tahan Hingga 24 Jam.", label: "Footer Struk", type: "string" },
   ];
 

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ShoppingCart,
+  Receipt,
   Package,
   Boxes,
   Wallet,
@@ -11,7 +12,7 @@ import {
   RotateCcw,
   BarChart3,
   ShieldAlert,
-  Sparkles,
+  ShieldCheck,
   LogOut,
   ChevronRight,
 } from "lucide-react";
@@ -36,6 +37,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       icon: ShoppingCart,
       color: "text-indigo-500",
       badge: "Utama",
+    },
+    {
+      name: "Riwayat Struk",
+      href: "/sales",
+      icon: Receipt,
+      color: "text-cyan-500",
+      adminOnly: false,
     },
     {
       name: "Produk & Kategori",
@@ -86,6 +94,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       color: "text-slate-400",
       adminOnly: true,
     },
+    {
+      name: "Manajemen User",
+      href: "/users",
+      icon: ShieldCheck,
+      color: "text-teal-500",
+      adminOnly: true,
+    },
   ];
 
   const filteredNavigation = navigation.filter(
@@ -104,19 +119,21 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
       <aside
         className={cn(
-          "fixed top-0 bottom-0 left-0 z-50 flex w-72 flex-col bg-slate-900 text-slate-100 transition-transform duration-300 lg:static lg:translate-x-0 border-r border-slate-800 shadow-xl",
+          "fixed top-0 bottom-0 left-0 z-50 flex w-64 sm:w-72 max-w-[85vw] flex-col bg-slate-900 text-slate-100 transition-transform duration-300 lg:static lg:translate-x-0 border-r border-slate-800 shadow-xl",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
         {/* Brand Header */}
         <div className="flex h-20 items-center justify-between px-6 border-b border-slate-800/80 bg-slate-950/40">
           <Link href="/pos" className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 text-white shadow-lg shadow-indigo-500/25 ring-2 ring-indigo-400/20">
-              <Sparkles className="h-6 w-6" />
-            </div>
+            <img
+              src="/logo.png"
+              alt="MISYourPOS Logo"
+              className="h-11 w-11 rounded-full object-cover shadow-lg shadow-indigo-500/25 ring-2 ring-indigo-400/20"
+            />
             <div>
               <div className="text-base font-bold tracking-tight text-white flex items-center gap-1.5">
-                AromaPOS
+                MISYourPOS
                 <span className="text-[10px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
                   Refill
                 </span>
@@ -129,8 +146,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         </div>
 
         {/* Navigation Items */}
-        <div className="flex-1 overflow-y-auto px-4 py-5 space-y-1.5 scrollbar-thin">
-          <div className="px-3 pb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+        <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-2 scrollbar-thin">
+          <div className="px-3 pb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
             Menu Utama
           </div>
           {filteredNavigation.map((item) => {
@@ -142,27 +159,27 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 href={item.href}
                 onClick={onClose}
                 className={cn(
-                  "group flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-150",
+                  "group flex items-center justify-between rounded-2xl px-4 py-3 sm:py-3.5 text-sm sm:text-base font-semibold transition-all duration-150",
                   isActive
                     ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 font-semibold"
                     : "text-slate-300 hover:bg-slate-800 hover:text-white"
                 )}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3.5">
                   <item.icon
                     className={cn(
-                      "h-5 w-5 transition-transform group-hover:scale-110",
+                      "h-6 w-6 transition-transform group-hover:scale-110",
                       isActive ? "text-white" : item.color
                     )}
                   />
                   <span>{item.name}</span>
                 </div>
                 {item.badge && !isActive && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                     {item.badge}
                   </span>
                 )}
-                {isActive && <ChevronRight className="h-4 w-4 text-white/70" />}
+                {isActive && <ChevronRight className="h-5 w-5 text-white/70" />}
               </Link>
             );
           })}

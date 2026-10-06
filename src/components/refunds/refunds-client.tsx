@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   RotateCcw,
   Search,
@@ -16,7 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { createRefund, getSaleForRefund } from "@/lib/actions/refunds";
-import { useRouter } from "next/navigation";
+import { getSales } from "@/lib/actions/sales";
+import { useRouter, useSearchParams } from "next/navigation";
 
 interface RefundItem {
   id: string;
@@ -43,18 +44,27 @@ interface RefundItem {
 interface RefundsClientProps {
   initialRefunds: RefundItem[];
   isOwnerOrAdmin: boolean;
+  initialTxn?: string;
 }
 
 export function RefundsClient({
   initialRefunds,
   isOwnerOrAdmin,
+  initialTxn,
 }: RefundsClientProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [refunds, setRefunds] = useState<RefundItem[]>(initialRefunds);
 
   // New Refund search & form
-  const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
-  const [saleNumberQuery, setSaleNumberQuery] = useState("");
+  const [isProcessModalOpen, setIsProcessModalOpen] = useState(
+    !!initialTxn || !!searchParams.get("txn")
+  );
+  const [saleNumberQuery, setSaleNumberQuery] = useState(
+    initialTxn || searchParams.get("txn") || ""
+  );
+  const [recentSales, setRecentSales] = useState<any[]>([]);
+  const [loadingRecent, setLoadingRecent] = useState(false);
   const [searchingSale, setSearchingSale] = useState(false);
   const [foundSale, setFoundSale] = useState<any>(null);
   const [searchError, setSearchError] = useState("");
@@ -75,15 +85,13 @@ export function RefundsClient({
   const [submitError, setSubmitError] = useState("");
 
   // Search Sale
-  const handleSearchSale = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!saleNumberQuery.trim()) return;
+  const handleSearchSaleByNumber = async (txn: string) => {
     setSearchingSale(true);
     setSearchError("");
     setFoundSale(null);
 
     try {
-      const res = await getSaleForRefund(saleNumberQuery.trim());
+      const res = await getSaleForRefund(txn);
       if (!res.success || !res.data) {
         setSearchError(res.error || "Transaksi tidak ditemukan.");
       } else {
@@ -106,6 +114,39 @@ export function RefundsClient({
       setSearchingSale(false);
     }
   };
+
+  const handleSearchSale = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!saleNumberQuery.trim()) return;
+    await handleSearchSaleByNumber(saleNumberQuery.trim());
+  };
+
+  // Load recent receipts list to help pick a transaction number
+  const loadRecentSales = async () => {
+    setLoadingRecent(true);
+    try {
+      const res = await getSales({ limit: 25, page: 1 });
+      setRecentSales(res.sales as any[]);
+    } catch {
+      setRecentSales([]);
+    } finally {
+      setLoadingRecent(false);
+    }
+  };
+
+  const pickSale = async (txn: string) => {
+    setSaleNumberQuery(txn);
+    await handleSearchSaleByNumber(txn);
+  };
+
+  // Auto-search the transaction when arriving with ?txn=...
+  useEffect(() => {
+    const txn = initialTxn || searchParams.get("txn");
+    if (txn && !foundSale && !searchingSale) {
+      handleSearchSaleByNumber(txn);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTxn]);
 
   const totalRefundAmount = selectedItems.reduce(
     (sum, it) => sum + it.quantity * it.unitPrice,
@@ -290,7 +331,7 @@ export function RefundsClient({
             </div>
 
             {/* Step 1: Search Invoice */}
-            <form onSubmit={handleSearchSale} className="space-y-3 mb-6">
+            <form onSubmit={handleSearchSale} className="space-y-3 mb-4">
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
                 Cari Nomor Struk Transaksi Asal (TXN-...)
               </label>
@@ -298,7 +339,7 @@ export function RefundsClient({
                 <Input
                   value={saleNumberQuery}
                   onChange={(e) => setSaleNumberQuery(e.target.value)}
-                  placeholder="Contoh: TXN-20261006-0001"
+                  placeholder="Contoh: TXN-20261006-130806-125"
                   className="font-mono text-xs h-10"
                   required
                 />
@@ -315,6 +356,54 @@ export function RefundsClient({
                 <p className="text-xs font-semibold text-rose-500">{searchError}</p>
               )}
             </form>
+
+            {/* Recent receipts picker */}
+            <div className="mb-6">
+              <button
+                type="button"
+                onClick={loadRecentSales}
+                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1.5 cursor-pointer"
+              >
+                <Receipt className="h-3.5 w-3.5" />
+                Lihat 25 struk terakhir (klik untuk memilih)
+              </button>
+
+              {loadingRecent && (
+                <p className="text-xs text-slate-400 mt-2">Memuat...</p>
+              )}
+
+              {!loadingRecent && recentSales.length > 0 && (
+                <div className="mt-2 max-h-44 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
+                  {recentSales.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => pickSale(s.transactionNumber)}
+                      className="w-full text-left px-3 py-2 text-[11px] hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                          {s.transactionNumber}
+                        </span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-200">
+                          {formatCurrency(s.grandTotal)}
+                        </span>
+                      </div>
+                      <div className="text-slate-400">
+                        {formatDateTime(s.date)} • {s.user?.name} • {s.paymentMethod}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {!loadingRecent && recentSales.length === 0 && (
+                <p className="text-xs text-slate-400 mt-2">
+                  Belum ada struk. Untuk melihat seluruh riwayat struk dengan filter tanggal, buka menu{" "}
+                  <span className="font-semibold">Riwayat Struk</span> di sidebar.
+                </p>
+              )}
+            </div>
 
             {/* Step 2: Found Sale Details & Items Selection */}
             {foundSale && (

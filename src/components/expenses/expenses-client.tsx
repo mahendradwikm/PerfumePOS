@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   DollarSign,
   Plus,
@@ -43,6 +44,14 @@ export function ExpensesClient({
   isOwnerOrAdmin,
 }: ExpensesClientProps) {
   const [expenses, setExpenses] = useState<ExpenseItem[]>(initialExpenses);
+  const [prevInitialExpenses, setPrevInitialExpenses] = useState(initialExpenses);
+  const router = useRouter();
+
+  if (prevInitialExpenses !== initialExpenses) {
+    setPrevInitialExpenses(initialExpenses);
+    setExpenses(initialExpenses);
+  }
+
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("ALL");
 
@@ -137,6 +146,7 @@ export function ExpensesClient({
         };
         setExpenses([created, ...expenses]);
         setIsModalOpen(false);
+        router.refresh();
       }
     } catch (err: any) {
       setFormError(err?.message || "Terjadi kesalahan sistem.");

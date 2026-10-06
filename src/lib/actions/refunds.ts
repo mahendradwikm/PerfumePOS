@@ -1,10 +1,11 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import prisma from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/auth";
 import { createRefundSchema, type CreateRefundInput } from "@/lib/validators";
 import { createAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
-import { generateTransactionNumber } from "@/lib/utils";
+import { generateTransactionNumber, serializeDecimal } from "@/lib/utils";
 import { Prisma } from "@prisma/client";
 
 // ============================================================
@@ -128,7 +129,13 @@ export async function createRefund(input: CreateRefundInput) {
       },
     });
 
-    return { success: true, data: result };
+    const serialized = {
+      ...result,
+      refundAmount: Number(result.refundAmount),
+    };
+
+    revalidatePath("/", "layout");
+    return { success: true, data: serializeDecimal(serialized) };
   } catch (error) {
     console.error("Create refund error:", error);
     return {
@@ -181,7 +188,7 @@ export async function getRefunds(params?: {
     prisma.refund.count({ where }),
   ]);
 
-  return {
+  return serializeDecimal({
     refunds: refunds.map((r) => ({
       ...r,
       refundAmount: Number(r.refundAmount),
@@ -200,7 +207,7 @@ export async function getRefunds(params?: {
     page,
     limit,
     totalPages: Math.ceil(total / limit),
-  };
+  });
 }
 
 export async function getSaleForRefund(transactionNumber: string) {
@@ -223,7 +230,7 @@ export async function getSaleForRefund(transactionNumber: string) {
     return { success: false, error: "Transaksi tidak ditemukan atau sudah dibatalkan." };
   }
 
-  return {
+  return serializeDecimal({
     success: true,
     data: {
       ...sale,
@@ -236,6 +243,6 @@ export async function getSaleForRefund(transactionNumber: string) {
         unitPrice: Number(i.unitPrice),
       })),
     },
-  };
+  });
 }
 

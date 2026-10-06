@@ -10,6 +10,11 @@
     "db:start": "node scripts/run-pg.mjs",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio --port 5555 --hostname 0.0.0.0 --browser none",
+    "db:tables": "node scripts/db.mjs tables",
+    "db:stats": "node scripts/db.mjs stats",
+    "db:view": "node scripts/db.mjs view",
+    "db:sql": "node scripts/db.mjs sql",
     "test": "vitest run"
   },
   "prisma": {
@@ -42,6 +47,7 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.4.0",
     "embedded-postgres": "^18.4.0-beta.17",
+    "exceljs": "^4.4.0",
     "lucide-react": "^1.52.0",
     "next": "16.3.8",
     "next-auth": "^4.24.15",

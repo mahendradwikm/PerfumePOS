@@ -9,9 +9,22 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "AromaPOS — Retail Refill Perfume POS System",
+  title: "MISYourPOS — Retail Refill Perfume POS System",
   description: "Production-ready POS, Inventory, Cash Management, and Financial Analytics for Perfume Refill Store",
 };
+
+// Applied before paint so the chosen theme never flashes the wrong colors
+const themeInitScript = `
+(function () {
+  try {
+    var saved = localStorage.getItem("mis-yourpos-theme");
+    var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var theme = saved || (prefersDark ? "dark" : "light");
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.style.colorScheme = theme;
+  } catch (e) {}
+})();
+`;
 
 export default function RootLayout({
   children,
@@ -19,7 +32,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="id" className={`${inter.variable} h-full antialiased`}>
+    <html lang="id" className={`${inter.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className="min-h-full flex flex-col font-sans bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
         <SessionProvider>{children}</SessionProvider>
       </body>

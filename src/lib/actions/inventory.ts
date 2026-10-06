@@ -1,10 +1,12 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import prisma from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/auth";
 import { restockSchema, stockAdjustmentSchema, type RestockInput, type StockAdjustmentInput } from "@/lib/validators";
 import { createAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
 import { Prisma } from "@prisma/client";
+import { serializeDecimal } from "@/lib/utils";
 
 // ============================================================
 // RESTOCK / TAMBAH STOK
@@ -64,7 +66,8 @@ export async function restockProduct(input: RestockInput) {
       newValue: { stock: Number(result.product.currentStock), added: data.quantity },
     });
 
-    return { success: true, data: result };
+    revalidatePath("/", "layout");
+    return { success: true, data: serializeDecimal(result) };
   } catch (error) {
     console.error("Restock error:", error);
     return {
@@ -146,7 +149,8 @@ export async function adjustStock(input: StockAdjustmentInput) {
       },
     });
 
-    return { success: true, data: result };
+    revalidatePath("/", "layout");
+    return { success: true, data: serializeDecimal(result) };
   } catch (error) {
     console.error("Stock adjustment error:", error);
     return {
@@ -205,7 +209,7 @@ export async function getStockMovements(params?: {
     prisma.stockMovement.count({ where }),
   ]);
 
-  return {
+  return serializeDecimal({
     movements: movements.map((m) => ({
       ...m,
       quantity: Number(m.quantity),
@@ -216,7 +220,7 @@ export async function getStockMovements(params?: {
     page,
     limit,
     totalPages: Math.ceil(total / limit),
-  };
+  });
 }
 
 // ============================================================
@@ -257,7 +261,7 @@ export async function getInventoryDashboard() {
     }),
   ]);
 
-  return {
+  return serializeDecimal({
     totalProducts,
     activeProducts,
     totalStock: totalStockResult[0]?.total || 0,
@@ -270,5 +274,5 @@ export async function getInventoryDashboard() {
       previousStock: Number(m.previousStock),
       newStock: Number(m.newStock),
     })),
-  };
+  });
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Boxes,
   ArrowDownRight,
@@ -46,9 +47,22 @@ export function InventoryClient({
   initialMovements,
   isOwnerOrAdmin,
 }: InventoryClientProps) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"summary" | "ledger" | "restock" | "adjust">("summary");
   const [summary, setSummary] = useState(initialSummary);
   const [movements, setMovements] = useState<any[]>(initialMovements);
+
+  const [prevInitialSummary, setPrevInitialSummary] = useState(initialSummary);
+  const [prevInitialMovements, setPrevInitialMovements] = useState(initialMovements);
+
+  if (prevInitialSummary !== initialSummary) {
+    setPrevInitialSummary(initialSummary);
+    setSummary(initialSummary);
+  }
+  if (prevInitialMovements !== initialMovements) {
+    setPrevInitialMovements(initialMovements);
+    setMovements(initialMovements);
+  }
 
   // Restock Form State
   const [restockForm, setRestockForm] = useState({
@@ -76,15 +90,52 @@ export function InventoryClient({
   // Search filter for summary
   const [stockSearch, setStockSearch] = useState("");
 
-  const filteredProducts = products.filter((p) => {
-    if (!stockSearch.trim()) return true;
-    const q = stockSearch.toLowerCase();
-    return (
-      p.name.toLowerCase().includes(q) ||
-      p.sku.toLowerCase().includes(q) ||
-      (p.fragranceName && p.fragranceName.toLowerCase().includes(q))
-    );
-  });
+  // Simple sort/filter per column
+  const [sortKey, setSortKey] = useState<string>("");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const toggleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const statusRank = (p: any) => {
+    const out = p.currentStock <= 0;
+    const low = !out && p.currentStock <= p.minimumStock;
+    return out ? 0 : low ? 1 : 2;
+  };
+
+  const filteredProducts = products
+    .filter((p) => {
+      if (!stockSearch.trim()) return true;
+      const q = stockSearch.toLowerCase();
+      return (
+        p.name.toLowerCase().includes(q) ||
+        p.sku.toLowerCase().includes(q) ||
+        (p.fragranceName && p.fragranceName.toLowerCase().includes(q))
+      );
+    })
+    .sort((a, b) => {
+      if (!sortKey) return 0;
+      let va: any, vb: any;
+      switch (sortKey) {
+        case "name": va = a.name; vb = b.name; break;
+        case "sku": va = a.sku; vb = b.sku; break;
+        case "costPrice": va = a.costPrice; vb = b.costPrice; break;
+        case "minimumStock": va = a.minimumStock; vb = b.minimumStock; break;
+        case "currentStock": va = a.currentStock; vb = b.currentStock; break;
+        case "totalValue": va = a.currentStock * a.costPrice; vb = b.currentStock * b.costPrice; break;
+        case "status": va = statusRank(a); vb = statusRank(b); break;
+        default: return 0;
+      }
+      if (va < vb) return sortDir === "asc" ? -1 : 1;
+      if (va > vb) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
 
   // Handle Restock Submit
   const handleRestockSubmit = async (e: React.FormEvent) => {
@@ -116,6 +167,8 @@ export function InventoryClient({
           },
           ...movements,
         ]);
+        // Refresh server data to get latest summary and product list
+        router.refresh();
       }
     } catch (err: any) {
       setRestockMsg({ type: "error", text: err?.message || "Terjadi kesalahan sistem." });
@@ -153,6 +206,8 @@ export function InventoryClient({
           },
           ...movements,
         ]);
+        // Refresh server data to get latest summary and product list
+        router.refresh();
       }
     } catch (err: any) {
       setAdjustMsg({ type: "error", text: err?.message || "Terjadi kesalahan sistem." });
@@ -179,7 +234,7 @@ export function InventoryClient({
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Mutasi Stok");
-    XLSX.writeFile(wb, `Kartu_Stok_AromaPOS_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `Kartu_Stok_MISYourPOS_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   return (
@@ -340,17 +395,61 @@ export function InventoryClient({
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {[
+              { label: "Nama A→Z", key: "name", dir: "asc" },
+              { label: "Nama Z→A", key: "name", dir: "desc" },
+              { label: "Stok Terendah", key: "currentStock", dir: "asc" },
+              { label: "Stok Tertinggi", key: "currentStock", dir: "desc" },
+              { label: "HPP Termahal", key: "costPrice", dir: "desc" },
+              { label: "HPP Termurah", key: "costPrice", dir: "asc" },
+              { label: "Nilai Tertinggi", key: "totalValue", dir: "desc" },
+              { label: "Nilai Terendah", key: "totalValue", dir: "asc" },
+              { label: "Menipis Dulu", key: "status", dir: "asc" },
+              { label: "Aman Dulu", key: "status", dir: "desc" },
+            ].map((opt) => (
+              <button
+                key={`${opt.key}-${opt.dir}`}
+                onClick={() => {
+                  setSortKey(opt.key);
+                  setSortDir(opt.dir as "asc" | "desc");
+                }}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
+                  sortKey === opt.key && sortDir === opt.dir
+                    ? "bg-indigo-600 text-white border-indigo-600"
+                    : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-800">
                 <tr>
-                  <th className="py-3 px-4">Produk</th>
-                  <th className="py-3 px-4">SKU</th>
-                  <th className="py-3 px-4 text-right">Harga Modal (HPP)</th>
-                  <th className="py-3 px-4 text-center">Batas Minimum</th>
-                  <th className="py-3 px-4 text-center">Stok Saat Ini</th>
-                  <th className="py-3 px-4 text-right">Total Nilai Persediaan</th>
-                  <th className="py-3 px-4 text-center">Status</th>
+                  <th className="py-3 px-4 cursor-pointer select-none" onClick={() => toggleSort("name")}>
+                    Produk {sortKey === "name" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                  </th>
+                  <th className="py-3 px-4 cursor-pointer select-none" onClick={() => toggleSort("sku")}>
+                    SKU {sortKey === "sku" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                  </th>
+                  <th className="py-3 px-4 text-right cursor-pointer select-none" onClick={() => toggleSort("costPrice")}>
+                    Harga Modal (HPP) {sortKey === "costPrice" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                  </th>
+                  <th className="py-3 px-4 text-center cursor-pointer select-none" onClick={() => toggleSort("minimumStock")}>
+                    Batas Minimum {sortKey === "minimumStock" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                  </th>
+                  <th className="py-3 px-4 text-center cursor-pointer select-none" onClick={() => toggleSort("currentStock")}>
+                    Stok Saat Ini {sortKey === "currentStock" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                  </th>
+                  <th className="py-3 px-4 text-right cursor-pointer select-none" onClick={() => toggleSort("totalValue")}>
+                    Total Nilai Persediaan {sortKey === "totalValue" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                  </th>
+                  <th className="py-3 px-4 text-center cursor-pointer select-none" onClick={() => toggleSort("status")}>
+                    Status {sortKey === "status" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -360,7 +459,12 @@ export function InventoryClient({
                   const totalValue = p.currentStock * p.costPrice;
 
                   return (
-                    <tr key={p.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                    <tr
+                      key={p.id}
+                      className={`hover:bg-slate-50/60 dark:hover:bg-slate-800/40 ${
+                        isOut || isLow ? "bg-rose-50/70 dark:bg-rose-950/20" : ""
+                      }`}
+                    >
                       <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
                         {p.name}
                       </td>

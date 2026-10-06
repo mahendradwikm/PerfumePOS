@@ -1,10 +1,12 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import prisma from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/auth";
 import { createProductSchema, updateProductSchema, type CreateProductInput, type UpdateProductInput } from "@/lib/validators";
 import { createAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
 import { Prisma } from "@prisma/client";
+import { serializeDecimal } from "@/lib/utils";
 
 // ============================================================
 // CREATE PRODUCT
@@ -83,7 +85,16 @@ export async function createProduct(input: CreateProductInput) {
       newValue: { ...productData, initialStock },
     });
 
-    return { success: true, data: result };
+    const serialized = {
+      ...result,
+      costPrice: Number(result.costPrice),
+      sellingPrice: Number(result.sellingPrice),
+      currentStock: Number(result.currentStock),
+      minimumStock: Number(result.minimumStock),
+    };
+
+    revalidatePath("/", "layout");
+    return { success: true, data: serializeDecimal(serialized) };
   } catch (error) {
     console.error("Create product error:", error);
     return { success: false, error: "Gagal membuat produk" };
@@ -151,7 +162,16 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
       newValue: product,
     });
 
-    return { success: true, data: product };
+    const serialized = {
+      ...product,
+      costPrice: Number(product.costPrice),
+      sellingPrice: Number(product.sellingPrice),
+      currentStock: Number(product.currentStock),
+      minimumStock: Number(product.minimumStock),
+    };
+
+    revalidatePath("/", "layout");
+    return { success: true, data: serializeDecimal(serialized) };
   } catch (error) {
     console.error("Update product error:", error);
     return { success: false, error: "Gagal mengupdate produk" };
@@ -224,7 +244,7 @@ export async function getProducts(params?: {
     prisma.product.count({ where }),
   ]);
 
-  return {
+  return serializeDecimal({
     products: products.map((p) => ({
       ...p,
       costPrice: Number(p.costPrice),
@@ -236,7 +256,7 @@ export async function getProducts(params?: {
     page,
     limit,
     totalPages: Math.ceil(total / limit),
-  };
+  });
 }
 
 // ============================================================
@@ -261,7 +281,7 @@ export async function getProduct(id: string) {
 
   if (!product) return null;
 
-  return {
+  return serializeDecimal({
     ...product,
     costPrice: Number(product.costPrice),
     sellingPrice: Number(product.sellingPrice),
@@ -273,7 +293,7 @@ export async function getProduct(id: string) {
       previousStock: Number(m.previousStock),
       newStock: Number(m.newStock),
     })),
-  };
+  });
 }
 
 // ============================================================
@@ -484,6 +504,7 @@ export async function bulkCreateProducts(items: {
     newValue: { bulkImportCount: createdCount + updatedCount, createdCount, updatedCount },
   });
 
+  revalidatePath("/", "layout");
   return { success: true, createdCount, updatedCount };
 }
 

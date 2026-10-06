@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   Search,
   ShoppingCart,
@@ -77,9 +78,22 @@ export function POSClient({
   currentUser,
   storeSettings,
 }: POSClientProps) {
+  const router = useRouter();
   const [products, setProducts] = useState<ProductItem[]>(initialProducts);
   const [activeSession, setActiveSession] = useState<any>(initialSession);
   const [showOpenSessionModal, setShowOpenSessionModal] = useState<boolean>(!initialSession);
+
+  const [prevInitialProducts, setPrevInitialProducts] = useState(initialProducts);
+  if (prevInitialProducts !== initialProducts) {
+    setPrevInitialProducts(initialProducts);
+    setProducts(initialProducts);
+  }
+
+  const [prevInitialSession, setPrevInitialSession] = useState(initialSession);
+  if (prevInitialSession !== initialSession) {
+    setPrevInitialSession(initialSession);
+    setActiveSession(initialSession);
+  }
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
@@ -187,21 +201,18 @@ export function POSClient({
 
   // Update Cart Quantity
   const updateCartQty = (productId: string, newQty: number) => {
-    if (newQty <= 0) {
-      removeFromCart(productId);
-      return;
-    }
+    const qty = Math.max(0, Number(newQty) || 0);
     setCart((prev) =>
       prev.map((item) => {
         if (item.productId === productId) {
-          if (newQty > item.maxStock) {
+          if (qty > item.maxStock) {
             alert(`Jumlah melebihi stok yang tersedia (${item.maxStock} ${item.unit})`);
             return item;
           }
           return {
             ...item,
-            quantity: newQty,
-            total: newQty * item.unitPrice - item.discount,
+            quantity: qty,
+            total: qty * item.unitPrice - item.discount,
           };
         }
         return item;
@@ -227,7 +238,7 @@ export function POSClient({
       setShowOpenSessionModal(true);
       return;
     }
-    if (cart.length === 0) return;
+    if (!cart.some((it) => it.quantity > 0)) return;
     setCashReceived(grandTotal); // default exact amount
     setErrorMessage("");
     setIsCheckoutOpen(true);
@@ -237,6 +248,14 @@ export function POSClient({
   const handleProcessCheckout = async () => {
     if (!activeSession) {
       setErrorMessage("Sesi kasir belum dibuka.");
+      return;
+    }
+
+    // Only items with quantity > 0 are actually sold
+    const saleItems = cart.filter((it) => it.quantity > 0);
+
+    if (saleItems.length === 0) {
+      setErrorMessage("Keranjang kosong. Tambahkan produk dengan jumlah lebih dari 0.");
       return;
     }
 
@@ -251,7 +270,7 @@ export function POSClient({
     try {
       const res = await createSale({
         paymentMethod,
-        items: cart.map((it) => ({
+        items: saleItems.map((it) => ({
           productId: it.productId,
           productName: it.productName,
           productSku: it.sku,
@@ -278,8 +297,8 @@ export function POSClient({
       // Update local product stocks atomically
       setProducts((prev) =>
         prev.map((p) => {
-          const cartItem = cart.find((ci) => ci.productId === p.id);
-          if (cartItem) {
+          const cartItem = saleItems.find((ci) => ci.productId === p.id);
+          if (cartItem && cartItem.quantity > 0) {
             return {
               ...p,
               currentStock: p.currentStock - cartItem.quantity,
@@ -288,6 +307,9 @@ export function POSClient({
           return p;
         })
       );
+
+      // Refresh server data so stock/summary stay in sync
+      router.refresh();
 
       // Prepare receipt
       const createdSale = res.data;
@@ -321,7 +343,7 @@ export function POSClient({
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-6.5rem)]">
+    <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-[calc(100vh-5.5rem)] lg:h-[calc(100vh-6.5rem)]">
       {/* LEFT COLUMN: Catalog & Products */}
       <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden">
         {/* Top Header / Search & Category Filters */}
@@ -344,15 +366,15 @@ export function POSClient({
           )}
 
           <div className="flex items-center gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
                 ref={searchInputRef}
                 type="text"
                 placeholder="Cari parfum (nama, SKU, aroma, barcode)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 h-11 rounded-2xl bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sm shadow-inner"
+                className="pl-11 h-12 sm:h-13 rounded-2xl bg-white dark:bg-slate-950 border-2 border-slate-200 dark:border-slate-800 text-base font-medium shadow-inner"
               />
               {searchQuery && (
                 <button
@@ -370,10 +392,10 @@ export function POSClient({
           </div>
 
           {/* Categories Horizontal Scroll */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+          <div className="flex items-center gap-2.5 overflow-x-auto pb-1 scrollbar-none">
             <button
               onClick={() => setSelectedCategory("ALL")}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              className={`px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all cursor-pointer ${
                 selectedCategory === "ALL"
                   ? "bg-indigo-600 text-white shadow-sm shadow-indigo-500/25"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -385,7 +407,7 @@ export function POSClient({
               <button
                 key={c.id}
                 onClick={() => setSelectedCategory(c.name)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                className={`px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all cursor-pointer ${
                   selectedCategory === c.name
                     ? "bg-indigo-600 text-white shadow-sm shadow-indigo-500/25"
                     : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -408,7 +430,7 @@ export function POSClient({
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-3 gap-4">
               {filteredProducts.map((p) => {
                 const isOutOfStock = p.currentStock <= 0;
                 const isLowStock = p.currentStock <= p.minimumStock && !isOutOfStock;
@@ -417,49 +439,53 @@ export function POSClient({
                 return (
                   <div
                     key={p.id}
+                    onClick={() => {
+                      if (isOutOfStock) return;
+                      addToCart(p, isPerfumeRefill ? 30 : 1);
+                    }}
                     className={`group relative flex flex-col justify-between rounded-2xl border p-4 transition-all duration-200 ${
                       isOutOfStock
-                        ? "border-slate-200 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-900/40 opacity-70"
-                        : "border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700"
+                        ? "border-slate-200 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-900/40 opacity-70 cursor-not-allowed"
+                        : "border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700 cursor-pointer"
                     }`}
                   >
                     <div>
                       {/* Top Badges */}
-                      <div className="flex items-center justify-between gap-1 mb-2">
-                        <span className="text-[10px] font-mono font-bold text-slate-400 truncate">
+                      <div className="flex items-center justify-between gap-1.5 mb-2 flex-wrap">
+                        <span className="text-[11px] font-mono font-bold text-slate-400 truncate">
                           {p.sku}
                         </span>
                         {isOutOfStock ? (
-                          <Badge variant="destructive" className="text-[10px] px-2 py-0.5">
+                          <Badge variant="destructive" className="text-[11px] px-2 py-0.5">
                             Stok Habis
                           </Badge>
                         ) : isLowStock ? (
-                          <Badge variant="warning" className="text-[10px] px-2 py-0.5">
+                          <Badge variant="warning" className="text-[11px] px-2 py-0.5">
                             Sisa {p.currentStock} {p.unit}
                           </Badge>
                         ) : (
-                          <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
                             Stok {p.currentStock} {p.unit}
                           </span>
                         )}
                       </div>
 
                       {/* Product Title */}
-                      <h4 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-1">
+                      <h4 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2">
                         {p.name}
                       </h4>
 
                       {/* Description / Aroma notes */}
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                      <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">
                         {p.fragranceName ? `Wangi: ${p.fragranceName}. ` : ""}
                         {p.description || "Aroma parfum refill premium tahan lama."}
                       </p>
                     </div>
 
                     <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-col gap-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-[10px] text-slate-400">Harga per {p.unit}</p>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="min-w-0">
+                          <p className="text-xs text-slate-400">Harga per {p.unit}</p>
                           <p className="text-base font-extrabold text-indigo-600 dark:text-indigo-400">
                             {formatCurrency(p.sellingPrice)}
                           </p>
@@ -470,10 +496,13 @@ export function POSClient({
                           <Button
                             size="sm"
                             disabled={isOutOfStock}
-                            onClick={() => addToCart(p, 1)}
-                            className="rounded-xl bg-slate-900 hover:bg-indigo-600 dark:bg-slate-800 dark:hover:bg-indigo-600 text-white font-semibold text-xs cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addToCart(p, 1);
+                            }}
+                            className="rounded-xl bg-slate-900 hover:bg-indigo-600 dark:bg-slate-800 dark:hover:bg-indigo-600 text-white font-semibold cursor-pointer shrink-0"
                           >
-                            <Plus className="h-3.5 w-3.5 mr-1" /> Tambah
+                            <Plus className="h-4 w-4" /> Tambah
                           </Button>
                         )}
                       </div>
@@ -484,9 +513,12 @@ export function POSClient({
                           {[30, 50, 100].map((ml) => (
                             <button
                               key={ml}
-                              onClick={() => addToCart(p, ml)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addToCart(p, ml);
+                              }}
                               disabled={p.currentStock < ml}
-                              className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                              className={`flex-1 min-w-0 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold border-2 transition-all cursor-pointer ${
                                 p.currentStock >= ml
                                   ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-600 hover:text-white hover:border-indigo-600"
                                   : "bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-50"
@@ -507,7 +539,7 @@ export function POSClient({
       </div>
 
       {/* RIGHT COLUMN: Interactive Cart & Checkout Panel */}
-      <div className="w-full lg:w-[420px] flex flex-col bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden shrink-0">
+      <div className="w-full lg:w-[380px] xl:w-[420px] flex flex-col bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden shrink-0">
         {/* Cart Header */}
         <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
           <div className="flex items-center gap-2.5">
@@ -519,7 +551,7 @@ export function POSClient({
                 Keranjang Belanja
               </h3>
               <p className="text-[11px] text-slate-400">
-                {cart.length} jenis item dipilih
+                {cart.filter((it) => it.quantity > 0).length} jenis item dipilih
               </p>
             </div>
           </div>
@@ -529,7 +561,7 @@ export function POSClient({
               onClick={clearCart}
               className="text-xs text-rose-500 hover:text-rose-600 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-4 w-4" />
               Kosongkan
             </button>
           )}
@@ -549,8 +581,17 @@ export function POSClient({
             cart.map((item) => (
               <div
                 key={item.productId}
-                className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/70 dark:border-slate-800 flex flex-col gap-2.5"
+                className={`p-3.5 rounded-2xl border flex flex-col gap-2.5 ${
+                  item.quantity === 0
+                    ? "bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/60"
+                    : "bg-slate-50 dark:bg-slate-800/40 border-slate-200/70 dark:border-slate-800"
+                }`}
               >
+                {item.quantity === 0 && (
+                  <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                    Jumlah 0 — produk ini tidak akan ikut transaksi
+                  </p>
+                )}
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
@@ -562,41 +603,50 @@ export function POSClient({
                   </div>
                   <button
                     onClick={() => removeFromCart(item.productId)}
-                    className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer transition-colors"
+                    className="text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 p-2.5 rounded-xl cursor-pointer transition-colors"
+                    aria-label="Hapus produk"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-5 w-5" />
                   </button>
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
                   {/* Quantity adjustment buttons */}
-                  <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-1">
+                  <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-xl p-1">
                     <button
                       onClick={() => updateCartQty(item.productId, item.quantity - 1)}
-                      className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                      aria-label="Kurangi jumlah"
+                      className="h-12 w-12 rounded-lg flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 cursor-pointer"
                     >
-                      <Minus className="h-3.5 w-3.5" />
+                      <Minus className="h-5 w-5" />
                     </button>
                     <input
                       type="number"
-                      min={1}
+                      min={0}
                       max={item.maxStock}
                       value={item.quantity}
-                      onChange={(e) =>
-                        updateCartQty(item.productId, Number(e.target.value))
-                      }
-                      className="w-12 text-center text-xs font-bold bg-transparent outline-none"
+                      aria-label={`Jumlah ${item.productName}`}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === "") {
+                          updateCartQty(item.productId, 0);
+                          return;
+                        }
+                        updateCartQty(item.productId, Number(raw));
+                      }}
+                      className="w-16 text-center text-lg font-black bg-transparent outline-none"
                     />
                     <button
                       onClick={() => updateCartQty(item.productId, item.quantity + 1)}
-                      className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                      aria-label="Tambah jumlah"
+                      className="h-12 w-12 rounded-lg flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 cursor-pointer"
                     >
-                      <Plus className="h-3.5 w-3.5" />
+                      <Plus className="h-5 w-5" />
                     </button>
                   </div>
 
                   <div className="text-right">
-                    <p className="text-xs font-extrabold text-slate-900 dark:text-white">
+                    <p className="text-base font-black text-slate-900 dark:text-white">
                       {formatCurrency(item.total)}
                     </p>
                   </div>
@@ -609,9 +659,9 @@ export function POSClient({
         {/* Cart Calculation & Payment Summary */}
         <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 space-y-3">
           {/* Discount input */}
-          <div className="flex items-center justify-between gap-3 text-xs">
-            <span className="text-slate-500 font-medium flex items-center gap-1.5">
-              <Percent className="h-3.5 w-3.5 text-indigo-500" />
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="text-slate-600 dark:text-slate-300 font-semibold flex items-center gap-2">
+              <Percent className="h-4 w-4 text-indigo-500" />
               Diskon Toko (Rp)
             </span>
             <input
@@ -619,30 +669,31 @@ export function POSClient({
               min={0}
               step={1000}
               placeholder="0"
+              aria-label="Diskon toko dalam rupiah"
               value={discountAmount || ""}
               onChange={(e) => setDiscountAmount(Number(e.target.value))}
-              className="w-28 text-right font-semibold text-xs px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-1 focus:ring-indigo-500"
+              className="w-32 h-11 text-right font-bold text-base px-3 py-2 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none focus:ring-4 focus:ring-indigo-200 focus:border-indigo-500"
             />
           </div>
 
-          <div className="space-y-1.5 pt-2 border-t border-slate-200/60 dark:border-slate-800 text-xs">
-            <div className="flex justify-between text-slate-500">
+          <div className="space-y-2 pt-3 border-t border-slate-200/60 dark:border-slate-800 text-sm">
+            <div className="flex justify-between text-slate-600 dark:text-slate-300">
               <span>Subtotal:</span>
-              <span className="font-semibold text-slate-700 dark:text-slate-300">
+              <span className="font-bold text-slate-800 dark:text-slate-200">
                 {formatCurrency(subtotal)}
               </span>
             </div>
             {discountAmount > 0 && (
-              <div className="flex justify-between text-rose-500 font-medium">
+              <div className="flex justify-between text-rose-500 font-semibold">
                 <span>Diskon:</span>
                 <span>-{formatCurrency(discountAmount)}</span>
               </div>
             )}
             <div className="flex justify-between items-baseline pt-2 border-t border-slate-200 dark:border-slate-800">
-              <span className="text-sm font-bold text-slate-900 dark:text-white">
+              <span className="text-base font-bold text-slate-900 dark:text-white">
                 Total Bayar:
               </span>
-              <span className="text-xl font-black text-indigo-600 dark:text-indigo-400">
+              <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
                 {formatCurrency(grandTotal)}
               </span>
             </div>
@@ -650,12 +701,12 @@ export function POSClient({
 
           {/* Checkout Action Button */}
           <Button
-            disabled={cart.length === 0}
+            disabled={!cart.some((it) => it.quantity > 0)}
             onClick={handleOpenCheckout}
-            className="w-full h-12 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.99]"
+            className="w-full h-14 sm:h-16 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-base sm:text-lg shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 sm:gap-3 cursor-pointer transition-all active:scale-[0.99]"
           >
-            <Banknote className="h-4 w-4" />
-            Bayar Sekarang ({formatCurrency(grandTotal)})
+            <Banknote className="h-5 w-5 sm:h-6 sm:w-6" />
+            <span className="truncate">Bayar Sekarang ({formatCurrency(grandTotal)})</span>
           </Button>
         </div>
       </div>
@@ -693,33 +744,33 @@ export function POSClient({
             {/* Payment Method Selector */}
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-2 block">
+                <label className="text-base font-bold text-slate-800 dark:text-slate-200 mb-3 block">
                   Metode Pembayaran
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={() => setPaymentMethod("CASH")}
-                    className={`flex items-center justify-center gap-2.5 p-3.5 rounded-2xl border-2 font-bold text-xs transition-all cursor-pointer ${
+                    className={`flex items-center justify-center gap-3 p-5 rounded-2xl border-2 font-bold text-base transition-all cursor-pointer ${
                       paymentMethod === "CASH"
-                        ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 shadow-xs"
+                        ? "border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 shadow-md"
                         : "border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300"
                     }`}
                   >
-                    <Banknote className="h-4 w-4 text-indigo-600" />
+                    <Banknote className="h-6 w-6 text-indigo-600" />
                     Tunai (Cash)
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setPaymentMethod("QRIS")}
-                    className={`flex items-center justify-center gap-2.5 p-3.5 rounded-2xl border-2 font-bold text-xs transition-all cursor-pointer ${
+                    className={`flex items-center justify-center gap-3 p-5 rounded-2xl border-2 font-bold text-base transition-all cursor-pointer ${
                       paymentMethod === "QRIS"
-                        ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 shadow-xs"
+                        ? "border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 shadow-md"
                         : "border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300"
                     }`}
                   >
-                    <QrIcon className="h-4 w-4 text-purple-600" />
+                    <QrIcon className="h-6 w-6 text-purple-600" />
                     QRIS Dinamis
                   </button>
                 </div>
@@ -728,7 +779,7 @@ export function POSClient({
               {/* CASH PAYMENT UI */}
               {paymentMethod === "CASH" && (
                 <div className="space-y-3 p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                  <label className="text-base font-bold text-slate-800 dark:text-slate-200 block mb-2">
                     Uang Tunai Diterima (Rp)
                   </label>
                   <Input
@@ -737,7 +788,7 @@ export function POSClient({
                     step={1000}
                     value={cashReceived || ""}
                     onChange={(e) => setCashReceived(Number(e.target.value))}
-                    className="text-lg font-bold text-slate-900 dark:text-white h-12 bg-white dark:bg-slate-900"
+                    className="text-xl font-black text-slate-900 dark:text-white h-14 bg-white dark:bg-slate-900"
                   />
 
                   {/* Quick Preset Buttons */}
@@ -745,7 +796,7 @@ export function POSClient({
                     <button
                       type="button"
                       onClick={() => setCashReceived(grandTotal)}
-                      className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-500 cursor-pointer"
+                      className="px-5 py-3 rounded-xl text-sm font-bold bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 cursor-pointer"
                     >
                       Uang Pas
                     </button>
@@ -754,7 +805,7 @@ export function POSClient({
                         key={amt}
                         type="button"
                         onClick={() => setCashReceived(amt)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                        className={`px-5 py-3 rounded-xl text-sm font-bold border-2 transition-all cursor-pointer ${
                           cashReceived === amt
                             ? "bg-indigo-600 text-white border-indigo-600"
                             : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
@@ -800,7 +851,7 @@ export function POSClient({
                     </div>
                   </div>
                   <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    Aroma Refill Parfumerie (NMID: ID1029384756)
+                    MISYourPOS (NMID: ID1029384756)
                   </p>
                   <p className="text-[11px] text-slate-500 mt-0.5">
                     Silakan arahkan kamera GoPay, OVO, Dana, BCA, atau Livin Mandiri ke kode QR di atas.
@@ -811,7 +862,7 @@ export function POSClient({
               {/* Customer Name & Notes */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">
                     Nama Pelanggan (Opsional)
                   </label>
                   <Input
@@ -819,19 +870,19 @@ export function POSClient({
                     placeholder="Pelanggan Umum"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
-                    className="h-10 text-xs"
+                    className="h-12 text-base"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                    Catatan Transaksi
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">
+                    Catatan Transaksi (Opsional)
                   </label>
                   <Input
                     type="text"
                     placeholder="Contoh: Botol dibawa sendiri"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    className="h-10 text-xs"
+                    className="h-12 text-base"
                   />
                 </div>
               </div>
@@ -843,17 +894,19 @@ export function POSClient({
                   (paymentMethod === "CASH" && cashReceived < grandTotal)
                 }
                 onClick={handleProcessCheckout}
-                className="w-full h-12 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer mt-2"
+                className="w-full h-14 sm:h-16 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-base sm:text-lg shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 sm:gap-3 cursor-pointer mt-3"
               >
                 {isSubmitting ? (
-                  <span className="flex items-center gap-2">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span className="flex items-center gap-3">
+                    <RefreshCw className="h-5 w-5 sm:h-6 sm:w-6 animate-spin" />
                     Menyimpan & Mengurangi Stok...
                   </span>
                 ) : (
-                  <span className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4" />
-                    Selesaikan Pembayaran ({formatCurrency(grandTotal)})
+                  <span className="flex items-center gap-2 sm:gap-3 min-w-0">
+                    <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 shrink-0" />
+                    <span className="truncate">
+                      Selesaikan Pembayaran ({formatCurrency(grandTotal)})
+                    </span>
                   </span>
                 )}
               </Button>

@@ -70,7 +70,7 @@ export function AuditClient({ logs }: AuditClientProps) {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Audit Log");
-    XLSX.writeFile(wb, `Audit_Trail_AromaPOS_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `Audit_Trail_MISYourPOS_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   return (

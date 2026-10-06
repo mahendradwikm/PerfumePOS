@@ -22,7 +22,7 @@ export default async function POSPage() {
   }
 
   const storeSettings = {
-    storeName: storeSettingsMap.store_name || "Aroma Luxury Refill Parfumerie",
+    storeName: storeSettingsMap.store_name || "MISYourPOS Parfumerie",
     address: storeSettingsMap.store_address || "Jl. Malioboro No. 45, Yogyakarta",
     phone: storeSettingsMap.store_phone || "0812-3456-7890",
     receiptHeader: storeSettingsMap.receipt_header,

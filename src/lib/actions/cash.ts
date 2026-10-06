@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import prisma from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import {
@@ -10,6 +11,7 @@ import {
 } from "@/lib/validators";
 import { createAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
 import { Prisma } from "@prisma/client";
+import { serializeDecimal } from "@/lib/utils";
 
 // ============================================================
 // OPEN CASH SESSION
@@ -43,6 +45,9 @@ export async function openCashSession(input: OpenCashSessionInput) {
         userId: user.id,
         notes: data.notes || null,
       },
+      include: {
+        user: { select: { name: true } },
+      },
     });
 
     await createAuditLog({
@@ -53,7 +58,21 @@ export async function openCashSession(input: OpenCashSessionInput) {
       newValue: { openingCash: data.openingCash },
     });
 
-    return { success: true, data: session };
+    const serialized = {
+      ...session,
+      openingCash: Number(session.openingCash),
+      closingCash: session.closingCash ? Number(session.closingCash) : null,
+      expectedCash: session.expectedCash ? Number(session.expectedCash) : null,
+      variance: session.variance ? Number(session.variance) : null,
+      cashSales: Number(session.cashSales),
+      qrisSales: Number(session.qrisSales),
+      cashExpenses: Number(session.cashExpenses),
+      cashRefunds: Number(session.cashRefunds),
+      totalSales: Number(session.totalSales),
+    };
+
+    revalidatePath("/", "layout");
+    return { success: true, data: serializeDecimal(serialized) };
   } catch (error) {
     console.error("Open cash session error:", error);
     return { success: false, error: "Gagal membuka sesi kasir" };
@@ -101,6 +120,9 @@ export async function closeCashSession(input: CloseCashSessionInput) {
         closedAt: new Date(),
         notes: data.notes || session.notes,
       },
+      include: {
+        user: { select: { name: true } },
+      },
     });
 
     await createAuditLog({
@@ -117,7 +139,21 @@ export async function closeCashSession(input: CloseCashSessionInput) {
       },
     });
 
-    return { success: true, data: updatedSession };
+    const serialized = {
+      ...updatedSession,
+      openingCash: Number(updatedSession.openingCash),
+      closingCash: updatedSession.closingCash ? Number(updatedSession.closingCash) : null,
+      expectedCash: updatedSession.expectedCash ? Number(updatedSession.expectedCash) : null,
+      variance: updatedSession.variance ? Number(updatedSession.variance) : null,
+      cashSales: Number(updatedSession.cashSales),
+      qrisSales: Number(updatedSession.qrisSales),
+      cashExpenses: Number(updatedSession.cashExpenses),
+      cashRefunds: Number(updatedSession.cashRefunds),
+      totalSales: Number(updatedSession.totalSales),
+    };
+
+    revalidatePath("/", "layout");
+    return { success: true, data: serializeDecimal(serialized) };
   } catch (error) {
     console.error("Close cash session error:", error);
     return { success: false, error: "Gagal menutup sesi kasir" };
@@ -143,7 +179,7 @@ export async function getCurrentCashSession() {
 
   if (!session) return null;
 
-  return {
+  const serialized = {
     ...session,
     openingCash: Number(session.openingCash),
     closingCash: session.closingCash ? Number(session.closingCash) : null,
@@ -155,6 +191,8 @@ export async function getCurrentCashSession() {
     cashRefunds: Number(session.cashRefunds),
     totalSales: Number(session.totalSales),
   };
+
+  return serializeDecimal(serialized);
 }
 
 // ============================================================
@@ -197,7 +235,7 @@ export async function getCashSessions(params?: {
     prisma.cashSession.count({ where }),
   ]);
 
-  return {
+  const serialized = {
     sessions: sessions.map((s) => ({
       ...s,
       openingCash: Number(s.openingCash),
@@ -215,6 +253,8 @@ export async function getCashSessions(params?: {
     limit,
     totalPages: Math.ceil(total / limit),
   };
+
+  return serializeDecimal(serialized);
 }
 
 export const getActiveCashSession = getCurrentCashSession;

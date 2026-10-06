@@ -1,10 +1,12 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import prisma from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/auth";
 import { expenseSchema, type ExpenseInput } from "@/lib/validators";
 import { createAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
 import { Prisma } from "@prisma/client";
+import { serializeDecimal } from "@/lib/utils";
 
 // ============================================================
 // CREATE EXPENSE
@@ -50,7 +52,13 @@ export async function createExpense(input: ExpenseInput) {
       newValue: data,
     });
 
-    return { success: true, data: expense };
+    const serialized = {
+      ...expense,
+      amount: Number(expense.amount),
+    };
+
+    revalidatePath("/", "layout");
+    return { success: true, data: serializeDecimal(serialized) };
   } catch (error) {
     console.error("Create expense error:", error);
     return { success: false, error: "Gagal membuat pengeluaran" };
@@ -94,7 +102,7 @@ export async function getExpenses(params?: {
     prisma.expense.count({ where }),
   ]);
 
-  return {
+  return serializeDecimal({
     expenses: expenses.map((e) => ({
       ...e,
       amount: Number(e.amount),
@@ -103,7 +111,7 @@ export async function getExpenses(params?: {
     page,
     limit,
     totalPages: Math.ceil(total / limit),
-  };
+  });
 }
 
 // ============================================================

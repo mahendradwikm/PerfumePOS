@@ -1,6 +1,6 @@
-# 🌸 AromaPOS — Retail Refill Perfume POS, Inventory & Financial System
+# 🌸 MISYourPOS — Retail Refill Perfume POS, Inventory & Financial System
 
-**AromaPOS** is a full-stack, production-ready Point of Sale (POS), Inventory Control, Cash Management, and Financial Analytics system purpose-built for the perfume refill retail industry.
+**MISYourPOS** is a full-stack, production-ready Point of Sale (POS), Inventory Control, Cash Management, and Financial Analytics system purpose-built for the perfume refill retail industry.
 
 It handles the unique operational requirements of refill parfumeries: tracking fragrance concentrate oils in milliliters (ml), solvents/absolute alcohols in ml, empty atomizers/bottles in pieces (pcs), composite cost calculation (COGS/HPP), cash drawer shift reconciliation, dual-mode payment (Cash & QRIS), and comprehensive financial accounting.
 
@@ -131,12 +131,76 @@ NEXTAUTH_SECRET="perfume-pos-super-secret-jwt-key-minimum-32-chars-2026"
 
 ### 4. Database Setup & Seeding
 ```bash
-# Push database schema
+# 1) Start the embedded PostgreSQL server (port 5432)
+npm run db:start
+
+# 2) Push database schema
 npm run db:push
 
-# Seed with rich demonstration data
+# 3) Seed with rich demonstration data
 npm run db:seed
 ```
+
+### 4b. 🔍 Mengakses Database
+
+Database adalah **PostgreSQL** yang berjalan lokal di port `5432`.
+
+| Item | Nilai |
+| --- | --- |
+| Host | `localhost` / `127.0.0.1` |
+| Port | `5432` |
+| User | `postgres` |
+| Password | `password` |
+| Database | `perfume_pos` |
+| Connection string | `postgresql://postgres:password@localhost:5432/perfume_pos` |
+
+#### A. Database Viewer dari Terminal (sudah termasuk di project)
+
+```bash
+# Daftar semua tabel + jumlah baris
+npm run db:tables
+
+# Ringkasan data (user, produk, transaksi, omzet, dll)
+npm run db:stats
+
+# Lihat isi sebuah tabel
+npm run db:view products
+npm run db:view sales --limit 50
+npm run db:view stock_movements --limit 20
+
+# Jalankan query SQL (hanya SELECT, aman)
+npm run db:sql "SELECT sku, name, current_stock FROM products WHERE current_stock <= minimum_stock"
+```
+
+Tabel yang bisa di-`view`:
+`users`, `categories`, `suppliers`, `products`, `sales`, `sale_items`,
+`stock_movements`, `cash_sessions`, `expenses`, `refunds`, `refund_items`,
+`audit_logs`, `store_settings`
+
+> Catatan PowerShell: bungkus query dengan **tanda kutip**. Jika query memuat
+> karakter `<` / `>` / `|`, gunakan tanda kutip tunggal agar tidak dianggap
+> operator shell.
+
+#### B. Prisma Studio (GUI di browser)
+
+```bash
+npm run db:studio
+```
+
+- Laptop: `http://localhost:5555`
+- Device lain (WiFi yang sama): `http://<IP-LAPTOP>:5555`
+
+Prisma Studio sudah di-bind ke `0.0.0.0`, jadi bisa dibuka juga dari HP untuk
+melihat/mengedit data seperti di spreadsheet.
+
+#### C. Aplikasi GUI eksternal (opsional)
+
+Karena port 5432 terbuka di localhost, database bisa dibuka dengan tool
+gratis seperti **DBeaver**, **pgAdmin**, atau **TablePlus** — cukup isi data
+koneksi pada tabel di atas.
+
+> ⚠️ Jangan menghapus folder `prisma/pg-cluster/` — itu lokasi file data
+> PostgreSQL (produk, transaksi, stok, user, dan audit log).
 
 ### 5. Running the Application
 ```bash

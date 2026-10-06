@@ -21,6 +21,11 @@ export default withAuth(
     callbacks: {
       authorized: ({ token }) => !!token,
     },
+    cookies: {
+      sessionToken: {
+        name: "next-auth.session-token",
+      },
+    },
     pages: {
       signIn: "/login",
     },
