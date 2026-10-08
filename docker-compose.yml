@@ -1,0 +1,136 @@
+# ---------------------------------------------------------------------------
+# MISYourPOS — production stack
+#
+#   db      official PostgreSQL (the project only used an embedded PostgreSQL
+#           for local development; `src/` talks plain Prisma, so this needs no
+#           application changes)
+#   migrate one-shot job that syncs the schema, then exits
+#   app     Next.js standalone server
+#   seed    optional demo-data loader (profile, off by default)
+#
+# Secrets are never stored here. Every credential is read from an env file:
+#
+#   cp .env.docker.example .env.docker   # then edit the values
+#   docker compose --env-file .env.docker up -d --build
+#
+# Compose fails fast (`:?`) when a required secret is missing, rather than
+# silently falling back to an insecure default.
+#
+# !! POSTGRES_PASSWORD is interpolated straight into DATABASE_URL below, so it
+# !! must be URL-safe: no @ : / ? # [ ] and no %. `openssl rand -base64 32`
+# !! CAN emit / and + and will break the connection string.
+# !! Use `openssl rand -hex 32` instead, or percent-encode the value.
+# ---------------------------------------------------------------------------
+
+name: misyourpos
+
+services:
+  # ---------------------------------------------------------------- db
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-perfume_pos}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — set it in .env.docker}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-perfume_pos}
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Intentionally no `ports:` — the database stays on the internal network
+    # and is not reachable from the host. Uncomment to inspect it locally:
+    # ports:
+    #   - "127.0.0.1:5432:5432"
+
+  # ------------------------------------------------------------ migrate
+  # Applies prisma/schema.prisma to the database, then exits.
+  # `service_completed_successfully` makes the app wait for it.
+  migrate:
+    build:
+      context: .
+      target: migrate
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-perfume_pos}?schema=public
+    # No --accept-data-loss: if a future schema change would drop columns,
+    # this fails loudly instead of silently resetting production data.
+    command: ["npx", "prisma", "db", "push", "--skip-generate"]
+    logging: *logging
+
+  # ---------------------------------------------------------------- app
+  app:
+    build:
+      context: .
+      target: runner
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-perfume_pos}?schema=public
+      # Required. Used by NextAuth to sign the session token.
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required — set it in .env.docker}
+      # Must match the URL users actually visit, including any proxy prefix.
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      # Trust the proxy's host header so it works behind nginx/Caddy.
+      AUTH_TRUST_HOST: "true"
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Parfume POS}
+      NEXT_PUBLIC_TIMEZONE: ${NEXT_PUBLIC_TIMEZONE:-Asia/Jakarta}
+      # Rupiah/locale formatting lives in src/lib/format.ts and uses Intl,
+      # which needs full ICU — present in the node:22-alpine base image.
+      TZ: ${TZ:-Asia/Jakarta}
+    ports:
+      # Set BIND_ADDRESS=127.0.0.1 when a reverse proxy (nginx/Caddy) is the
+      # only intended entry point, so the app cannot be reached directly.
+      - "${BIND_ADDRESS:-0.0.0.0}:${APP_PORT:-3000}:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    logging: *logging
+
+  # --------------------------------------------------------------- seed
+  # Optional: loads the demonstration catalogue and the three starter
+  # accounts. Enable with:  docker compose --profile seed --env-file .env.docker run --rm seed
+  seed:
+    build:
+      context: .
+      target: seed
+    profiles: ["seed"]
+    depends_on:
+      db:
+        condition: service_healthy
+      # Seed inserts into tables, so the schema must exist first.
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-perfume_pos}?schema=public
+    command: ["npx", "tsx", "prisma/seed.ts"]
+    logging: *logging
+
+volumes:
+  db_data:

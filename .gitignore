@@ -33,6 +33,7 @@ yarn-error.log*
 # env files (keep the example, never commit real secrets)
 .env*
 !.env.example
+!.env.docker.example
 
 # local database (embedded PostgreSQL data files — NEVER commit)
 # these are binary data files of your live database (products, sales, users)

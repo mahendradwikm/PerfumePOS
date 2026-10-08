@@ -1,0 +1,66 @@
+# ---------------------------------------------------------------------------
+# Keep the build context small, reproducible, and free of secrets.
+# Anything matched here is never sent to the Docker daemon.
+# ---------------------------------------------------------------------------
+
+# Secrets — MUST never enter an image layer. Real values are injected at
+# runtime via compose env / `--env-file`.
+.env
+.env.*
+!.env.example
+!.env.docker.example
+
+# Dependencies & build output (rebuilt inside the image)
+node_modules
+.next
+out
+build
+dist
+coverage
+*.tsbuildinfo
+next-env.d.ts
+
+# Version control & editor cruft
+.git
+.gitignore
+.gitattributes
+.github
+.vscode
+.idea
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local PostgreSQL data directories. These hold the live dev database
+# (products, sales, users, audit logs) and are git-ignored; shipping them
+# would both bloat the context and leak business data.
+prisma/pg-cluster
+prisma/pgdata
+
+# Local binaries / tooling (e.g. cloudflared.exe ~55MB)
+tools
+
+# Docker files themselves (not needed inside the image)
+Dockerfile
+.dockerignore
+docker-compose.yml
+compose.yaml
+
+# Local DB tooling scripts — dev-only helpers that reference an embedded
+# PostgreSQL, which does not exist in production. Production talks to the
+# official postgres service over DATABASE_URL.
+scripts
+
+# Documentation & agent instructions (not needed at runtime)
+README.md
+AGENTS.md
+CLAUDE.md
+
+# Test suite (not required to serve traffic)
+src/__tests__
+vitest.config.ts
+eslint.config.mjs
+
+# Stray generated exports
+*.xlsx
+debug-export.*
