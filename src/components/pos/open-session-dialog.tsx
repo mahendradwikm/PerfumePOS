@@ -5,6 +5,7 @@ import { Wallet, AlertCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { openCashSession } from "@/lib/actions/cash";
+import { notifyCashSessionChanged } from "@/lib/cash-session-events";
 import { formatCurrency } from "@/lib/format";
 
 interface OpenSessionDialogProps {
@@ -36,6 +37,10 @@ export function OpenSessionDialog({ isOpen, onSuccess }: OpenSessionDialogProps)
       if (!res.success) {
         setError(res.error || "Gagal membuka sesi kasir.");
       } else {
+        // Update the header status chip immediately. It reads the cash session
+        // on the client, so neither this dialog's local state nor the POS page's
+        // own state is enough to flip it — it has to be told explicitly.
+        notifyCashSessionChanged(res.data);
         onSuccess(res.data);
       }
     } catch (err: any) {

@@ -5,6 +5,7 @@ import { Menu, Wallet, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { getActiveCashSession } from "@/lib/actions/cash";
+import { CASH_SESSION_CHANGED_EVENT } from "@/lib/cash-session-events";
 import { formatCurrency } from "@/lib/format";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 
@@ -45,22 +46,39 @@ export function Header({ onToggleSidebar }: HeaderProps) {
     return () => clearInterval(interval);
   }, []);
 
-  // Check active cash session
+  // Check active cash session.
+  // This chip reads the session on the client, so `router.refresh()` does not
+  // reach it. Re-read on mount, whenever the cash page reports a change (so the
+  // chip flips the moment a session is opened/closed), and poll as a fallback
+  // to catch changes made in another tab or by another user.
   useEffect(() => {
+    let cancelled = false;
+
     async function checkSession() {
       try {
         const res = await getActiveCashSession();
-        setActiveSession(res);
+        if (!cancelled) setActiveSession(res);
       } catch (e) {
         // ignore
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
+
     checkSession();
-    // Poll every 30 seconds
+
     const interval = setInterval(checkSession, 30000);
-    return () => clearInterval(interval);
+    const onSessionChanged = () => {
+      setLoading(false);
+      checkSession();
+    };
+    window.addEventListener(CASH_SESSION_CHANGED_EVENT, onSessionChanged);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      window.removeEventListener(CASH_SESSION_CHANGED_EVENT, onSessionChanged);
+    };
   }, []);
 
   return (

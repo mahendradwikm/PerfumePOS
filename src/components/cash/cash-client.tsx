@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { openCashSession, closeCashSession } from "@/lib/actions/cash";
+import { notifyCashSessionChanged } from "@/lib/cash-session-events";
 import { useRouter } from "next/navigation";
 
 interface CashSession {
@@ -144,6 +145,9 @@ export function CashClient({
         setCurrentSession(newSes as CashSession);
         setIsOpenModalVisible(false);
         router.refresh();
+        // Update the header status chip immediately — it reads the session on
+        // the client, so router.refresh() alone would leave it stale.
+        notifyCashSessionChanged(newSes);
       }
     } catch (err: any) {
       setOpenError(err?.message || "Terjadi kesalahan sistem.");
@@ -189,6 +193,8 @@ export function CashClient({
         upsertSession(closed as CashSession);
         setIsCloseModalVisible(false);
         router.refresh();
+        // Mirror the header status chip back to "Kasir Tutup" without a reload.
+        notifyCashSessionChanged(null);
       }
     } catch (err: any) {
       setCloseError(err?.message || "Terjadi kesalahan sistem.");
