@@ -156,17 +156,20 @@ export function InventoryClient({
         setRestockMsg({ type: "error", text: res.error || "Gagal melakukan restok." });
       } else {
         setRestockMsg({ type: "success", text: "Stok berhasil ditambahkan ke inventori!" });
-        // update local movements
+        // Optimistically prepend the new movement (only if the server returned an id,
+        // so React keys stay unique)
         const newMov = res.data?.movement;
-        const prod = products.find((p) => p.id === restockForm.productId);
-        setMovements([
-          {
-            ...newMov,
-            product: { name: prod?.name, sku: prod?.sku, unit: prod?.unit },
-            user: { name: "Anda" },
-          },
-          ...movements,
-        ]);
+        if (newMov?.id) {
+          const prod = products.find((p) => p.id === restockForm.productId);
+          setMovements((prev) => [
+            {
+              ...newMov,
+              product: { name: prod?.name, sku: prod?.sku, unit: prod?.unit },
+              user: { name: "Anda" },
+            } as any,
+            ...prev,
+          ]);
+        }
         // Refresh server data to get latest summary and product list
         router.refresh();
       }
@@ -197,15 +200,17 @@ export function InventoryClient({
       } else {
         setAdjustMsg({ type: "success", text: "Penyesuaian stok berhasil dicatat!" });
         const newMov = res.data?.movement;
-        const prod = products.find((p) => p.id === adjustForm.productId);
-        setMovements([
-          {
-            ...newMov,
-            product: { name: prod?.name, sku: prod?.sku, unit: prod?.unit },
-            user: { name: "Anda" },
-          },
-          ...movements,
-        ]);
+        if (newMov?.id) {
+          const prod = products.find((p) => p.id === adjustForm.productId);
+          setMovements((prev) => [
+            {
+              ...newMov,
+              product: { name: prod?.name, sku: prod?.sku, unit: prod?.unit },
+              user: { name: "Anda" },
+            } as any,
+            ...prev,
+          ]);
+        }
         // Refresh server data to get latest summary and product list
         router.refresh();
       }

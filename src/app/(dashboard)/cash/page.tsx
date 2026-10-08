@@ -8,7 +8,10 @@ export default async function CashPage() {
   const currentUser = await getCurrentUser();
   const [currentSession, historyRes] = await Promise.all([
     getCurrentCashSession(),
-    getCashSessions({ limit: 50 }),
+    // Only closed sessions belong to the history table — the open session is
+    // already rendered separately above it, so listing it twice created
+    // duplicate rows (and duplicate React keys).
+    getCashSessions({ limit: 50, status: "CLOSED" }),
   ]);
 
   return (

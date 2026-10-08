@@ -172,12 +172,12 @@ export function RefundsClient({
 
       if (!res.success) {
         setSubmitError(res.error || "Gagal memproses refund.");
-      } else {
+      } else if (res.data?.id) {
         const created = {
-          ...res.data!,
-          refundAmount: Number(res.data?.refundAmount),
+          ...res.data,
+          refundAmount: Number(res.data.refundAmount),
           sale: {
-            saleNumber: foundSale.saleNumber,
+            saleNumber: foundSale.transactionNumber,
             grandTotal: Number(foundSale.grandTotal),
             paymentMethod: foundSale.paymentMethod,
           },
@@ -192,7 +192,12 @@ export function RefundsClient({
           user: { name: "Anda" },
         };
 
-        setRefunds([created as any, ...refunds]);
+        setRefunds((prev) => [created as any, ...prev]);
+        setIsProcessModalOpen(false);
+        setFoundSale(null);
+        setSaleNumberQuery("");
+        router.refresh();
+      } else {
         setIsProcessModalOpen(false);
         setFoundSale(null);
         setSaleNumberQuery("");

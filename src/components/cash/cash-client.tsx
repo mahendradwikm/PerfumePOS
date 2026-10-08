@@ -47,6 +47,22 @@ interface CashClientProps {
   currentUser: any;
 }
 
+/**
+ * Remove duplicated sessions by id (keeping the first / newest occurrence).
+ * Prevents React "two children with the same key" errors when a session is
+ * both already present in the server list and prepended optimistically.
+ */
+function dedupeSessions(sessions: CashSession[]): CashSession[] {
+  const seen = new Set<string>();
+  const out: CashSession[] = [];
+  for (const s of sessions) {
+    if (!s?.id || seen.has(s.id)) continue;
+    seen.add(s.id);
+    out.push(s);
+  }
+  return out;
+}
+
 export function CashClient({
   currentSession: initialSession,
   sessionHistory: initialHistory,
@@ -55,6 +71,23 @@ export function CashClient({
   const router = useRouter();
   const [currentSession, setCurrentSession] = useState<CashSession | null>(initialSession);
   const [history, setHistory] = useState<CashSession[]>(initialHistory);
+
+  // Keep local state in sync with server data (after router.refresh())
+  const [prevSession, setPrevSession] = useState(initialSession);
+  if (prevSession !== initialSession) {
+    setPrevSession(initialSession);
+    setCurrentSession(initialSession);
+  }
+  const [prevHistory, setPrevHistory] = useState(initialHistory);
+  if (prevHistory !== initialHistory) {
+    setPrevHistory(initialHistory);
+    setHistory(dedupeSessions(initialHistory));
+  }
+
+  // Merge a session into history without ever creating duplicate rows (unique React keys)
+  const upsertSession = (session: CashSession) => {
+    setHistory((prev) => dedupeSessions([session, ...prev]));
+  };
 
   // Open Session State
   const [isOpenModalVisible, setIsOpenModalVisible] = useState(false);
@@ -108,7 +141,7 @@ export function CashClient({
           variance: null,
           user: { name: currentUser?.name || "Kasir" },
         };
-        setCurrentSession(newSes as any);
+        setCurrentSession(newSes as CashSession);
         setIsOpenModalVisible(false);
         router.refresh();
       }
@@ -153,7 +186,7 @@ export function CashClient({
           notes: closeNotes || currentSession.notes,
         };
         setCurrentSession(null);
-        setHistory([closed, ...history]);
+        upsertSession(closed as CashSession);
         setIsCloseModalVisible(false);
         router.refresh();
       }

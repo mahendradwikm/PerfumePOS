@@ -221,18 +221,20 @@ export function ProductsClient({
           return;
         }
 
-        const newProd = res.data!;
-        setProducts((prev) => [
-          {
-            ...newProd,
-            costPrice: Number(newProd!.costPrice),
-            sellingPrice: Number(newProd!.sellingPrice),
-            currentStock: Number(newProd!.currentStock),
-            minimumStock: Number(newProd!.minimumStock),
-            category: categories.find((c) => c.id === formData.categoryId) || null,
-          } as any,
-          ...prev,
-        ]);
+        const newProd = res.data;
+        if (newProd?.id) {
+          setProducts((prev) => [
+            {
+              ...newProd,
+              costPrice: Number(newProd.costPrice),
+              sellingPrice: Number(newProd.sellingPrice),
+              currentStock: Number(newProd.currentStock),
+              minimumStock: Number(newProd.minimumStock),
+              category: categories.find((c) => c.id === formData.categoryId) || null,
+            } as any,
+            ...prev,
+          ]);
+        }
       }
 
       setIsModalOpen(false);

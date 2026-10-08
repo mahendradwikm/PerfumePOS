@@ -133,18 +133,21 @@ export function ExpensesClient({
 
       if (!res.success) {
         setFormError(res.error || "Gagal mencatat pengeluaran.");
-      } else {
+      } else if (res.data?.id) {
         const created: ExpenseItem = {
-          id: res.data!.id ?? "",
-          date: res.data!.date,
-          category: res.data!.category ?? formData.category,
-          description: res.data!.description ?? formData.description,
-          amount: Number(res.data!.amount),
-          paymentMethod: res.data!.paymentMethod ?? formData.paymentMethod,
+          id: res.data.id,
+          date: res.data.date,
+          category: res.data.category ?? formData.category,
+          description: res.data.description ?? formData.description,
+          amount: Number(res.data.amount),
+          paymentMethod: res.data.paymentMethod ?? formData.paymentMethod,
           notes: res.data?.notes,
           user: { name: "Anda" },
         };
-        setExpenses([created, ...expenses]);
+        setExpenses((prev) => [created, ...prev]);
+        setIsModalOpen(false);
+        router.refresh();
+      } else {
         setIsModalOpen(false);
         router.refresh();
       }
