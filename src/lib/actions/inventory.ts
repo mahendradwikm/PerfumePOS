@@ -6,7 +6,7 @@ import { requireAuth, requireRole } from "@/lib/auth";
 import { restockSchema, stockAdjustmentSchema, type RestockInput, type StockAdjustmentInput } from "@/lib/validators";
 import { createAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
 import { Prisma } from "@prisma/client";
-import { serializeDecimal } from "@/lib/utils";
+import { serializeDecimal } from "@/lib/decimal";
 
 // ============================================================
 // RESTOCK / TAMBAH STOK

@@ -11,7 +11,7 @@ import {
 } from "@/lib/validators";
 import { createAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
 import { Prisma } from "@prisma/client";
-import { serializeDecimal } from "@/lib/utils";
+import { serializeDecimal } from "@/lib/decimal";
 
 // ============================================================
 // OPEN CASH SESSION

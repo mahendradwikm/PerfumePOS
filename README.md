@@ -239,7 +239,9 @@ npm test
 ### Tested Modules:
 - **`financial-and-perfume-logic.test.ts`**: Refill 2:1 & 1:1 ratio formulations, composite COGS (HPP), gross margin %, shift drawer cash reconciliation, and change calculations.
 - **`validators.test.ts`**: Zod validation schemas for products, sales, cash shifts, expenses, and refund payloads.
-- **`utils.test.ts`**: Indonesian Rupiah formatting, date localization, stock badge thresholds, and floating-point decimal operations.
+- **`format.test.ts`**: Indonesian Rupiah formatting, number formatting, currency parsing, and transaction number generation.
+- **`stock-status.test.ts`**: Stock badge thresholds (Habis / Stok Rendah / Tersedia).
+- **`decimal.test.ts`**: Floating-point safe decimal operations.
 
 ---
 

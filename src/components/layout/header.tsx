@@ -5,7 +5,7 @@ import { Menu, Wallet, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { getActiveCashSession } from "@/lib/actions/cash";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency } from "@/lib/format";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 interface HeaderProps {

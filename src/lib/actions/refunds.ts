@@ -5,7 +5,8 @@ import prisma from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/auth";
 import { createRefundSchema, type CreateRefundInput } from "@/lib/validators";
 import { createAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
-import { generateTransactionNumber, serializeDecimal } from "@/lib/utils";
+import { generateTransactionNumber } from "@/lib/format";
+import { serializeDecimal } from "@/lib/decimal";
 import { Prisma } from "@prisma/client";
 
 // ============================================================

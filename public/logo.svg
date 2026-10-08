@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="MISYourPOS">
+  <!--
+    Minimal POS mark: a receipt with a torn bottom edge and three line items.
+    Flat colour only, no gradients or effects, so it stays crisp from 16px
+    favicon up to 512px. The badge is a full-bleed circle, which renders
+    identically whether or not the consumer applies rounded-full.
+  -->
+  <defs>
+    <clipPath id="badge">
+      <circle cx="256" cy="256" r="256"/>
+    </clipPath>
+  </defs>
+
+  <!-- Flat brand indigo badge -->
+  <circle cx="256" cy="256" r="256" fill="#4f46e5"/>
+
+  <!-- Receipt -->
+  <g clip-path="url(#badge)">
+    <path fill="#ffffff" d="
+      M 162 132
+      H 350
+      A 30 30 0 0 1 380 162
+      V 350
+      L 349 380
+      L 318 350
+      L 287 380
+      L 256 350
+      L 225 380
+      L 194 350
+      L 163 380
+      L 132 350
+      V 162
+      A 30 30 0 0 1 162 132
+      Z"/>
+  </g>
+
+  <!-- Line items, cut out in the badge colour -->
+  <g fill="#4f46e5">
+    <rect x="174" y="192" width="164" height="24" rx="12"/>
+    <rect x="174" y="240" width="164" height="24" rx="12"/>
+    <rect x="174" y="288" width="116" height="24" rx="12"/>
+  </g>
+</svg>

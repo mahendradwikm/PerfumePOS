@@ -5,7 +5,7 @@ import { Wallet, AlertCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { openCashSession } from "@/lib/actions/cash";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency } from "@/lib/format";
 
 interface OpenSessionDialogProps {
   isOpen: boolean;

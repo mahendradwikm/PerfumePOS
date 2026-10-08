@@ -56,7 +56,7 @@ export default function LoginPage() {
         {/* Brand Card Header */}
         <div className="text-center mb-8">
           <img
-            src="/logo.png"
+            src="/logo.svg"
             alt="MISYourPOS Logo"
             className="h-16 w-16 rounded-full object-cover shadow-xl shadow-indigo-500/30 ring-4 ring-indigo-400/20 mb-4"
           />

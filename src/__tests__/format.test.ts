@@ -3,15 +3,10 @@ import {
   formatCurrency,
   formatNumber,
   parseCurrency,
-  getStockStatus,
   generateTransactionNumber,
-  decimalAdd,
-  decimalSubtract,
-  decimalMultiply,
-  toDecimal,
-} from "@/lib/utils";
+} from "@/lib/format";
 
-describe("Utility Functions", () => {
+describe("Formatting Utilities", () => {
   describe("formatCurrency", () => {
     it("should format valid number to Indonesian Rupiah", () => {
       const formatted = formatCurrency(50000);
@@ -57,32 +52,6 @@ describe("Utility Functions", () => {
     });
   });
 
-  describe("getStockStatus", () => {
-    it("should return Habis (destructive) when currentStock is 0 or negative", () => {
-      const statusZero = getStockStatus(0, 100);
-      expect(statusZero.label).toBe("Habis");
-      expect(statusZero.variant).toBe("destructive");
-
-      const statusNeg = getStockStatus(-5, 100);
-      expect(statusNeg.label).toBe("Habis");
-    });
-
-    it("should return Stok Rendah (warning) when stock is below or equal to threshold", () => {
-      const statusLow = getStockStatus(50, 100);
-      expect(statusLow.label).toBe("Stok Rendah");
-      expect(statusLow.variant).toBe("warning");
-
-      const statusExact = getStockStatus(100, 100);
-      expect(statusExact.label).toBe("Stok Rendah");
-    });
-
-    it("should return Tersedia (success) when stock is safely above threshold", () => {
-      const statusGood = getStockStatus(250, 100);
-      expect(statusGood.label).toBe("Tersedia");
-      expect(statusGood.variant).toBe("success");
-    });
-  });
-
   describe("generateTransactionNumber", () => {
     it("should start with default prefix TXN", () => {
       const txn = generateTransactionNumber();
@@ -92,25 +61,6 @@ describe("Utility Functions", () => {
     it("should support custom prefixes", () => {
       const txn = generateTransactionNumber("REF");
       expect(txn.startsWith("REF-")).toBe(true);
-    });
-  });
-
-  describe("Decimal Safe Operations", () => {
-    it("should safely add floats without floating point errors", () => {
-      expect(decimalAdd(0.1, 0.2)).toBe(0.3);
-    });
-
-    it("should safely subtract floats", () => {
-      expect(decimalSubtract(1.5, 0.4)).toBe(1.1);
-    });
-
-    it("should safely multiply floats", () => {
-      expect(decimalMultiply(12.5, 4)).toBe(50);
-    });
-
-    it("should cast to 2 decimal places safely", () => {
-      expect(toDecimal(12.3456)).toBe(12.35);
-      expect(toDecimal(null)).toBe(0);
     });
   });
 });

@@ -16,7 +16,7 @@ import {
   LogOut,
   ChevronRight,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { signOut, useSession } from "next-auth/react";
 
 interface SidebarProps {
@@ -127,7 +127,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="flex h-20 items-center justify-between px-6 border-b border-slate-800/80 bg-slate-950/40">
           <Link href="/pos" className="flex items-center gap-3">
             <img
-              src="/logo.png"
+              src="/logo.svg"
               alt="MISYourPOS Logo"
               className="h-11 w-11 rounded-full object-cover shadow-lg shadow-indigo-500/25 ring-2 ring-indigo-400/20"
             />

@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import { Printer, CheckCircle2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDateTime } from "@/lib/format";
 
 interface ReceiptItem {
   productName: string;

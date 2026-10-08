@@ -1,7 +1,7 @@
 "use server";
 
 import { getFinancialDashboardInternal, getTopSellingProductsInternal, getSalesAnalyticsInternal } from "@/lib/actions/reports";
-import { renderTrendChart } from "@/lib/utils/chart-png";
+import { renderTrendChart } from "@/lib/chart-png";
 import ExcelJS from "exceljs";
 
 function fmtDate(d: Date) {

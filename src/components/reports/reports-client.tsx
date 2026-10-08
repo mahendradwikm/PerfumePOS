@@ -31,7 +31,7 @@ import {
   ArrowDownRight,
 } from "lucide-react";
 import { exportReportXlsx } from "@/lib/actions/export-report";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatNumber } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 
 interface DashboardKPIs {
