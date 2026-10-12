@@ -177,7 +177,7 @@ export function UsersClient({ initialUsers }: { initialUsers: UserItem[] }) {
           </thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.id} className="border-b border-slate-50 dark:border-slate-800/60 last:border-0">
+              <tr key={u.id} className="border-b border-slate-100 dark:border-slate-800 last:border-0">
                 <td className="p-4 font-semibold text-slate-800 dark:text-slate-200">{u.name}</td>
                 <td className="p-4 font-mono text-slate-500">{u.username}</td>
                 <td className="p-4 text-slate-500">{u.email}</td>
@@ -188,7 +188,7 @@ export function UsersClient({ initialUsers }: { initialUsers: UserItem[] }) {
                 </td>
                 <td className="p-4">
                   {u.isActive ? (
-                    <span className="flex items-center gap-1.5 text-emerald-600">
+                    <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
                       <CheckCircle2 className="h-3.5 w-3.5" /> Aktif
                     </span>
                   ) : (

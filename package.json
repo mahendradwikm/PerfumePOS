@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/ensure-db.mjs && next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/ensure-db.mjs && next start",
     "lint": "eslint",
     "db:start": "node scripts/run-pg.mjs",
     "db:push": "prisma db push",

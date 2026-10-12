@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { createProduct, updateProduct, bulkCreateProducts } from "@/lib/actions/products";
+import { createProduct, updateProduct, bulkCreateProducts, deleteProduct, deactivateProduct, createCategory, updateCategory, deleteCategory } from "@/lib/actions/products";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 
@@ -45,6 +45,9 @@ interface Product {
 interface Category {
   id: string;
   name: string;
+  description?: string | null;
+  isActive?: boolean;
+  _count?: { products: number };
 }
 
 interface ProductsClientProps {
@@ -62,9 +65,19 @@ export function ProductsClient({
   const [prevInitialProducts, setPrevInitialProducts] = useState(initialProducts);
   const router = useRouter();
 
+  // Categories are edited from this page, so they need the same
+  // reconcile-with-server-data treatment as the product list.
+  const [categoryList, setCategoryList] = useState<Category[]>(categories);
+  const [prevInitialCategories, setPrevInitialCategories] = useState(categories);
+
   if (prevInitialProducts !== initialProducts) {
     setPrevInitialProducts(initialProducts);
     setProducts(initialProducts);
+  }
+
+  if (prevInitialCategories !== categories) {
+    setPrevInitialCategories(categories);
+    setCategoryList(categories);
   }
 
   const [search, setSearch] = useState("");
@@ -79,7 +92,7 @@ export function ProductsClient({
     barcode: "",
     name: "",
     fragranceName: "",
-    categoryId: categories[0]?.id || "",
+    categoryId: categoryList[0]?.id || "",
     unit: "ml",
     costPrice: 0,
     sellingPrice: 0,
@@ -91,6 +104,23 @@ export function ProductsClient({
   const [formError, setFormError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
+
+  // Delete confirmation state
+  const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleteBlocked, setDeleteBlocked] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  // Category management state
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [categoryForm, setCategoryForm] = useState({ name: "", description: "" });
+  const [categoryError, setCategoryError] = useState("");
+  const [isCategorySubmitting, setIsCategorySubmitting] = useState(false);
+  const [deletingCategory, setDeletingCategory] = useState<Category | null>(null);
+  const [isDeletingCategory, setIsDeletingCategory] = useState(false);
+  const [categoryDeleteError, setCategoryDeleteError] = useState("");
 
   // Filtered Products
   const filteredProducts = useMemo(() => {
@@ -119,6 +149,12 @@ export function ProductsClient({
     });
   }, [products, categoryFilter, stockStatusFilter, search]);
 
+  // A category can be deleted from this page (or on another device). Drop the
+  // stale filter instead of leaving the table permanently blank.
+  if (categoryFilter !== "ALL" && !categoryList.some((c) => c.name === categoryFilter)) {
+    setCategoryFilter("ALL");
+  }
+
   const handleOpenAdd = () => {
     setEditingProduct(null);
     setFormData({
@@ -126,7 +162,7 @@ export function ProductsClient({
       barcode: `899${Math.floor(100000 + Math.random() * 900000)}`,
       name: "",
       fragranceName: "",
-      categoryId: categories[0]?.id || "",
+      categoryId: categoryList[0]?.id || "",
       unit: "ml",
       costPrice: 1000,
       sellingPrice: 3000,
@@ -145,7 +181,7 @@ export function ProductsClient({
       barcode: p.barcode || "",
       name: p.name,
       fragranceName: p.fragranceName || "",
-      categoryId: p.categoryId || p.category?.id || categories[0]?.id || "",
+      categoryId: p.categoryId || p.category?.id || categoryList[0]?.id || "",
       unit: p.unit,
       costPrice: p.costPrice,
       sellingPrice: p.sellingPrice,
@@ -193,7 +229,7 @@ export function ProductsClient({
                   costPrice: Number(formData.costPrice),
                   sellingPrice: Number(formData.sellingPrice),
                   minimumStock: Number(formData.minimumStock),
-                  category: categories.find((c) => c.id === formData.categoryId) || item.category,
+                  category: categoryList.find((c) => c.id === formData.categoryId) || item.category,
                 }
               : item
           )
@@ -230,7 +266,7 @@ export function ProductsClient({
               sellingPrice: Number(newProd.sellingPrice),
               currentStock: Number(newProd.currentStock),
               minimumStock: Number(newProd.minimumStock),
-              category: categories.find((c) => c.id === formData.categoryId) || null,
+              category: categoryList.find((c) => c.id === formData.categoryId) || null,
             } as any,
             ...prev,
           ]);
@@ -251,13 +287,214 @@ export function ProductsClient({
     if (!isOwnerOrAdmin) return;
     const newStatus = !p.isActive;
     try {
-      await updateProduct(p.id, { isActive: newStatus });
+      if (!newStatus) {
+        // Turning it off hides it from Kasir - use the idempotent soft-delete path.
+        const res = await deactivateProduct(p.id);
+        if (!res.success) {
+          setNotice(res.error || "Gagal menonaktifkan produk");
+          return;
+        }
+      } else {
+        const res = await updateProduct(p.id, { isActive: true });
+        if (!res.success) {
+          // Already deleted (here or on another device) - drop it from this list too.
+          setProducts((prev) => prev.filter((it) => it.id !== p.id));
+          setNotice(`Produk "${p.name}" sudah tidak ada, jadi dihapus dari daftar.`);
+          router.refresh();
+          return;
+        }
+      }
+
       setProducts((prev) =>
         prev.map((it) => (it.id === p.id ? { ...it, isActive: newStatus } : it))
       );
       router.refresh();
     } catch (err) {
-      alert("Gagal mengubah status aktif produk");
+      setNotice("Gagal mengubah status aktif produk");
+    }
+  };
+
+  // ============================================================
+  // DELETE PRODUCT
+  // ============================================================
+
+  const handleOpenDelete = (p: Product) => {
+    setDeletingProduct(p);
+    setDeleteError("");
+    setDeleteBlocked(false);
+  };
+
+  const closeDeleteModal = () => {
+    if (isDeleting) return;
+    setDeletingProduct(null);
+    setDeleteError("");
+    setDeleteBlocked(false);
+  };
+
+  /** Removes the row locally + refreshes every server-rendered menu. */
+  const forgetProduct = (productId: string) => {
+    setProducts((prev) => prev.filter((it) => it.id !== productId));
+    setCategoryList((prev) =>
+      prev.map((c) => ({
+        ...c,
+        _count: c._count
+          ? { products: Math.max(0, c._count.products - 1) }
+          : c._count,
+      }))
+    );
+    router.refresh();
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingProduct || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError("");
+    setDeleteBlocked(false);
+
+    try {
+      const res = await deleteProduct(deletingProduct.id);
+
+      if (res.success) {
+        const name = deletingProduct.name;
+        forgetProduct(deletingProduct.id);
+        setDeletingProduct(null);
+        setNotice(
+          res.alreadyDeleted
+            ? `"${name}" sudah tidak ada di database, daftar sudah diperbarui.`
+            : `"${name}" dihapus dari Katalog, Inventori, dan Kasir.`
+        );
+        return;
+      }
+
+      setDeleteBlocked(!!res.canDeactivate);
+      setDeleteError(res.error || "Gagal menghapus produk");
+    } catch (err: any) {
+      setDeleteError(err?.message || "Terjadi kesalahan sistem.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  /** Fallback for products locked by transaction history: soft delete instead. */
+  const handleConfirmDeactivate = async () => {
+    if (!deletingProduct || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError("");
+
+    try {
+      const res = await deactivateProduct(deletingProduct.id);
+      const name = deletingProduct.name;
+
+      if (!res.success) {
+        setDeleteError(res.error || "Gagal menonaktifkan produk");
+        return;
+      }
+
+      setProducts((prev) => prev.filter((it) => it.id !== deletingProduct.id));
+      setDeletingProduct(null);
+      router.refresh();
+      setNotice(
+        res.alreadyDeactivated
+          ? `"${name}" sudah nonaktif, daftar sudah diperbarui.`
+          : `"${name}" dinonaktifkan - hilang dari Kasir & Inventori, riwayat penjualan tetap tersimpan.`
+      );
+    } catch (err: any) {
+      setDeleteError(err?.message || "Terjadi kesalahan sistem.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // ============================================================
+  // CATEGORY MANAGEMENT
+  // ============================================================
+
+  const handleOpenAddCategory = () => {
+    setEditingCategory(null);
+    setCategoryForm({ name: "", description: "" });
+    setCategoryError("");
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleOpenEditCategory = (c: Category) => {
+    setEditingCategory(c);
+    setCategoryForm({ name: c.name, description: c.description || "" });
+    setCategoryError("");
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleSubmitCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCategoryError("");
+    setIsCategorySubmitting(true);
+
+    try {
+      const res = editingCategory
+        ? await updateCategory(editingCategory.id, {
+            name: categoryForm.name,
+            description: categoryForm.description,
+          })
+        : await createCategory(categoryForm.name, categoryForm.description);
+
+      if (!res.success || !res.data) {
+        setCategoryError(res.error || "Gagal menyimpan kategori");
+        return;
+      }
+
+      const saved = res.data;
+      setCategoryList((prev) =>
+        editingCategory
+          ? prev.map((c) =>
+              c.id === saved.id
+                ? {
+                    ...c,
+                    name: saved.name,
+                    description: saved.description,
+                    _count: saved._count,
+                  }
+                : c
+            )
+          : [...prev, { ...saved, _count: saved._count }]
+      );
+      // A renamed/deleted category changes the filter label on other menus.
+      if (editingCategory) setCategoryFilter("ALL");
+
+      setIsCategoryModalOpen(false);
+      router.refresh();
+    } catch (err: any) {
+      setCategoryError(err?.message || "Terjadi kesalahan sistem.");
+    } finally {
+      setIsCategorySubmitting(false);
+    }
+  };
+
+  const handleConfirmDeleteCategory = async () => {
+    if (!deletingCategory || isDeletingCategory) return;
+    setIsDeletingCategory(true);
+    setCategoryDeleteError("");
+
+    try {
+      const res = await deleteCategory(deletingCategory.id);
+
+      if (res.success) {
+        const name = deletingCategory.name;
+        setCategoryList((prev) => prev.filter((c) => c.id !== deletingCategory.id));
+        if (categoryFilter === name) setCategoryFilter("ALL");
+        setDeletingCategory(null);
+        router.refresh();
+        setNotice(
+          res.alreadyDeleted
+            ? `Kategori "${name}" sudah tidak ada, daftar kategori diperbarui.`
+            : `Kategori "${name}" dihapus dari semua menu.`
+        );
+        return;
+      }
+
+      setCategoryDeleteError(res.error || "Gagal menghapus kategori");
+    } catch (err: any) {
+      setCategoryDeleteError(err?.message || "Terjadi kesalahan sistem.");
+    } finally {
+      setIsDeletingCategory(false);
     }
   };
 
@@ -400,7 +637,7 @@ export function ProductsClient({
             onClick={handleExportCSV}
             className="rounded-xl flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
           >
-            <Download className="h-4 w-4 text-emerald-600" />
+            <Download className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             Ekspor Excel
           </Button>
 
@@ -438,7 +675,7 @@ export function ProductsClient({
               className="h-10 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 outline-none"
             >
               <option value="ALL">Semua Kategori</option>
-              {categories.map((c) => (
+              {categoryList.map((c) => (
                 <option key={c.id} value={c.name}>
                   {c.name}
                 </option>
@@ -457,6 +694,21 @@ export function ProductsClient({
           </div>
         </div>
       </div>
+
+      {/* Action feedback banner */}
+      {notice && (
+        <div className="flex items-start gap-2 rounded-2xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 px-4 py-3">
+          <CheckCircle className="h-4 w-4 mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <p className="flex-1 text-xs font-semibold text-emerald-800 dark:text-emerald-300">{notice}</p>
+          <button
+            onClick={() => setNotice("")}
+            className="p-0.5 rounded-full text-emerald-600 hover:text-emerald-800 cursor-pointer"
+            aria-label="Tutup notifikasi"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Products Table */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
@@ -490,7 +742,7 @@ export function ProductsClient({
                     <tr
                       key={p.id}
                       className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${
-                        !p.isActive ? "opacity-60 bg-slate-50/40" : ""
+                        !p.isActive ? "opacity-60 bg-slate-50/40 dark:bg-slate-800/30" : ""
                       }`}
                     >
                       <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-white">
@@ -540,8 +792,8 @@ export function ProductsClient({
                           onClick={() => handleToggleActive(p)}
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all cursor-pointer ${
                             p.isActive
-                              ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 border-emerald-200"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-300"
+                              ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 border-slate-300 dark:border-slate-700"
                           }`}
                         >
                           {p.isActive ? "Aktif" : "Nonaktif"}
@@ -549,14 +801,28 @@ export function ProductsClient({
                       </td>
                       {isOwnerOrAdmin && (
                         <td className="py-3.5 px-4 text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={() => handleOpenEdit(p)}
-                            className="rounded-lg text-slate-500 hover:text-indigo-600"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              title="Edit produk"
+                              aria-label={`Edit ${p.name}`}
+                              onClick={() => handleOpenEdit(p)}
+                              className="rounded-lg text-slate-500 hover:text-indigo-600"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              title="Hapus produk"
+                              aria-label={`Hapus ${p.name}`}
+                              onClick={() => handleOpenDelete(p)}
+                              className="rounded-lg text-slate-500 hover:text-rose-600"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -567,6 +833,238 @@ export function ProductsClient({
           </table>
         </div>
       </div>
+
+      {/* Category Management */}
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Kategori Produk</h2>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Kategori yang dipakai di Katalog, Inventori, Kasir, dan Laporan.
+            </p>
+          </div>
+          {isOwnerOrAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleOpenAddCategory}
+              className="rounded-xl flex items-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0"
+            >
+              <Plus className="h-4 w-4 text-indigo-600" />
+              Tambah Kategori
+            </Button>
+          )}
+        </div>
+
+        {categoryList.length === 0 ? (
+          <div className="py-10 text-center text-xs text-slate-400">
+            Belum ada kategori. Tambahkan kategori agar produk lebih mudah difilter.
+          </div>
+        ) : (
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+            {categoryList.map((c) => {
+              const count = c._count?.products ?? 0;
+              return (
+                <li
+                  key={c.id}
+                  className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                      {c.name}
+                    </div>
+                    {c.description && (
+                      <div className="text-[11px] text-slate-500 truncate">{c.description}</div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+                      {count} produk
+                    </span>
+                    {isOwnerOrAdmin && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title={`Ubah kategori ${c.name}`}
+                          aria-label={`Ubah kategori ${c.name}`}
+                          onClick={() => handleOpenEditCategory(c)}
+                          className="rounded-lg text-slate-500 hover:text-indigo-600"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title={`Hapus kategori ${c.name}`}
+                          aria-label={`Hapus kategori ${c.name}`}
+                          onClick={() => {
+                            setDeletingCategory(c);
+                            setCategoryDeleteError("");
+                          }}
+                          className="rounded-lg text-slate-500 hover:text-rose-600"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      {/* DELETE PRODUCT CONFIRMATION */}
+      {deletingProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="relative w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden p-6">
+            <div className="flex items-start gap-3">
+              <div className="shrink-0 w-10 h-10 rounded-2xl bg-rose-50 dark:bg-rose-950 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Hapus produk ini?
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {deletingProduct.name}
+                  </span>{" "}
+                  ({deletingProduct.sku}) beserta seluruh riwayat stoknya akan dihapus permanen.
+                </p>
+              </div>
+              <button
+                onClick={closeDeleteModal}
+                disabled={isDeleting}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer shrink-0"
+                aria-label="Batal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3 text-[11px] text-slate-600 dark:text-slate-300 space-y-1">
+              <p className="font-bold">Produk ini akan langsung hilang dari:</p>
+              <ul className="list-disc pl-4 space-y-0.5">
+                <li>Katalog Produk &amp; Kategori</li>
+                <li>Inventori &amp; Stok (ringkasan nilai &amp; daftar produk)</li>
+                <li>Kasir / POS (tidak bisa lagi dijual atau discan)</li>
+                <li>Laporan Penjualan &amp; Laporan Produk</li>
+              </ul>
+              <p className="pt-1">Transaksi yang sudah pernah tercatat tidak ikut terhapus.</p>
+            </div>
+
+            {deleteError && (
+              <div className="mt-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-xs font-semibold border border-rose-200 dark:border-rose-900 leading-relaxed">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="mt-5 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={closeDeleteModal}
+                disabled={isDeleting}
+                className="rounded-xl cursor-pointer"
+              >
+                Batal
+              </Button>
+              {!deleteBlocked && (
+                <Button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  disabled={isDeleting}
+                  className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold cursor-pointer"
+                >
+                  {isDeleting ? "Menghapus..." : "Ya, Hapus Permanen"}
+                </Button>
+              )}
+              {deleteBlocked && (
+                <Button
+                  type="button"
+                  onClick={handleConfirmDeactivate}
+                  disabled={isDeleting}
+                  className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold cursor-pointer"
+                >
+                  {isDeleting ? "Memproses..." : "Nonaktifkan Saja"}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CATEGORY CONFIRMATION */}
+      {deletingCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="relative w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden p-6">
+            <div className="flex items-start gap-3">
+              <div className="shrink-0 w-10 h-10 rounded-2xl bg-rose-50 dark:bg-rose-950 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Hapus kategori ini?
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                  Kategori{" "}
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {deletingCategory.name}
+                  </span>{" "}
+                  akan dihapus. Filter kategori di Kasir dan Inventori ikut diperbarui.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setDeletingCategory(null);
+                  setCategoryDeleteError("");
+                }}
+                disabled={isDeletingCategory}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer shrink-0"
+                aria-label="Batal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {categoryDeleteError ? (
+              <div className="mt-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-xs font-semibold border border-rose-200 dark:border-rose-900 leading-relaxed">
+                {categoryDeleteError}
+              </div>
+            ) : (
+              <p className="mt-4 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                Produk di dalam kategori ini tidak ikut terhapus.
+              </p>
+            )}
+
+            <div className="mt-5 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setDeletingCategory(null);
+                  setCategoryDeleteError("");
+                }}
+                disabled={isDeletingCategory}
+                className="rounded-xl cursor-pointer"
+              >
+                Batal
+              </Button>
+              <Button
+                type="button"
+                onClick={handleConfirmDeleteCategory}
+                disabled={isDeletingCategory || !!categoryDeleteError}
+                className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold cursor-pointer"
+              >
+                {isDeletingCategory ? "Menghapus..." : "Ya, Hapus Kategori"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CREATE / EDIT MODAL */}
       {isModalOpen && (
@@ -637,7 +1135,7 @@ export function ProductsClient({
                     onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
                     className="h-10 w-full text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 outline-none"
                   >
-                    {categories.map((c) => (
+                    {categoryList.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
                       </option>
@@ -739,6 +1237,86 @@ export function ProductsClient({
                   className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold cursor-pointer"
                 >
                   {isSubmitting ? "Menyimpan..." : editingProduct ? "Simpan Perubahan" : "Simpan Produk Baru"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE / EDIT CATEGORY MODAL */}
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="relative w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden p-6">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 mb-5">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                {editingCategory ? "Ubah Kategori" : "Tambah Kategori"}
+              </h3>
+              <button
+                onClick={() => setIsCategoryModalOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
+                aria-label="Tutup"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {categoryError && (
+              <div className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-xs font-semibold border border-rose-200">
+                {categoryError}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmitCategory} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Nama Kategori *
+                </label>
+                <Input
+                  value={categoryForm.name}
+                  onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
+                  placeholder="Contoh: Floral & Fresh"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Deskripsi (Opsional)
+                </label>
+                <Input
+                  value={categoryForm.description}
+                  onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
+                  placeholder="Contoh: Kategori aroma floral yang menyegarkan"
+                />
+              </div>
+
+              {editingCategory && (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Mengubah nama kategori akan otomatis menyesuaikan tampilan kategori di Katalog,
+                  Inventori, Kasir, dan Laporan.
+                </p>
+              )}
+
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsCategoryModalOpen(false)}
+                  className="rounded-xl cursor-pointer"
+                >
+                  Batal
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isCategorySubmitting}
+                  className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold cursor-pointer"
+                >
+                  {isCategorySubmitting
+                    ? "Menyimpan..."
+                    : editingCategory
+                      ? "Simpan Perubahan"
+                      : "Tambah Kategori"}
                 </Button>
               </div>
             </form>

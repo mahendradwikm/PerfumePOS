@@ -3,8 +3,9 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/cn";
 
 const buttonVariants = cva(
-  // Larger touch targets + clearer focus for elderly-friendly usage
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-base font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 disabled:pointer-events-none disabled:opacity-40 active:scale-[0.98] cursor-pointer select-none",
+  // Larger touch targets + clearer focus for elderly-friendly usage.
+  // The focus halo follows the mode so it never glares on a dark surface.
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-base font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 dark:focus-visible:ring-indigo-500/40 disabled:pointer-events-none disabled:opacity-40 active:scale-[0.98] cursor-pointer select-none",
   {
     variants: {
       variant: {

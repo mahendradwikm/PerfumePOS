@@ -87,6 +87,18 @@ export function InventoryClient({
   const [isAdjusting, setIsAdjusting] = useState(false);
   const [adjustMsg, setAdjustMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // `products` is a live prop, so it shrinks as soon as a product is deleted or
+  // deactivated from the Katalog menu. Re-point the two pickers at a product
+  // that still exists so the dropdowns never submit a stale productId.
+  const activeProducts = products.filter((p) => p.isActive !== false);
+  const knownProductIds = new Set(activeProducts.map((p) => p.id));
+  if (restockForm.productId && !knownProductIds.has(restockForm.productId)) {
+    setRestockForm((prev) => ({ ...prev, productId: activeProducts[0]?.id || "" }));
+  }
+  if (adjustForm.productId && !knownProductIds.has(adjustForm.productId)) {
+    setAdjustForm((prev) => ({ ...prev, productId: activeProducts[0]?.id || "" }));
+  }
+
   // Search filter for summary
   const [stockSearch, setStockSearch] = useState("");
 
@@ -109,7 +121,10 @@ export function InventoryClient({
     return out ? 0 : low ? 1 : 2;
   };
 
-  const filteredProducts = products
+  const filteredProducts = activeProducts
+    // Keep in step with Kasir: a product that was deleted or deactivated in the
+    // Katalog menu must not linger in the operational stock list. Its movement
+    // history stays visible in the Kartu Stok tab below.
     .filter((p) => {
       if (!stockSearch.trim()) return true;
       const q = stockSearch.toLowerCase();
@@ -262,7 +277,7 @@ export function InventoryClient({
             onClick={handleExportLedger}
             className="rounded-xl flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
           >
-            <Download className="h-4 w-4 text-emerald-600" />
+            <Download className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             Ekspor Kartu Stok
           </Button>
         </div>
@@ -288,7 +303,7 @@ export function InventoryClient({
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500">Total Varian Aktif</span>
-            <div className="h-8 w-8 rounded-xl bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center text-emerald-600">
+            <div className="h-8 w-8 rounded-xl bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
               <Package className="h-4 w-4" />
             </div>
           </div>
@@ -402,8 +417,8 @@ export function InventoryClient({
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {[
-              { label: "Nama A→Z", key: "name", dir: "asc" },
-              { label: "Nama Z→A", key: "name", dir: "desc" },
+              { label: "Nama Aâ†’Z", key: "name", dir: "asc" },
+              { label: "Nama Zâ†’A", key: "name", dir: "desc" },
               { label: "Stok Terendah", key: "currentStock", dir: "asc" },
               { label: "Stok Tertinggi", key: "currentStock", dir: "desc" },
               { label: "HPP Termahal", key: "costPrice", dir: "desc" },
@@ -435,30 +450,39 @@ export function InventoryClient({
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="py-3 px-4 cursor-pointer select-none" onClick={() => toggleSort("name")}>
-                    Produk {sortKey === "name" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                    Produk {sortKey === "name" ? (sortDir === "asc" ? "â–²" : "â–¼") : ""}
                   </th>
                   <th className="py-3 px-4 cursor-pointer select-none" onClick={() => toggleSort("sku")}>
-                    SKU {sortKey === "sku" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                    SKU {sortKey === "sku" ? (sortDir === "asc" ? "â–²" : "â–¼") : ""}
                   </th>
                   <th className="py-3 px-4 text-right cursor-pointer select-none" onClick={() => toggleSort("costPrice")}>
-                    Harga Modal (HPP) {sortKey === "costPrice" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                    Harga Modal (HPP) {sortKey === "costPrice" ? (sortDir === "asc" ? "â–²" : "â–¼") : ""}
                   </th>
                   <th className="py-3 px-4 text-center cursor-pointer select-none" onClick={() => toggleSort("minimumStock")}>
-                    Batas Minimum {sortKey === "minimumStock" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                    Batas Minimum {sortKey === "minimumStock" ? (sortDir === "asc" ? "â–²" : "â–¼") : ""}
                   </th>
                   <th className="py-3 px-4 text-center cursor-pointer select-none" onClick={() => toggleSort("currentStock")}>
-                    Stok Saat Ini {sortKey === "currentStock" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                    Stok Saat Ini {sortKey === "currentStock" ? (sortDir === "asc" ? "â–²" : "â–¼") : ""}
                   </th>
                   <th className="py-3 px-4 text-right cursor-pointer select-none" onClick={() => toggleSort("totalValue")}>
-                    Total Nilai Persediaan {sortKey === "totalValue" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                    Total Nilai Persediaan {sortKey === "totalValue" ? (sortDir === "asc" ? "â–²" : "â–¼") : ""}
                   </th>
                   <th className="py-3 px-4 text-center cursor-pointer select-none" onClick={() => toggleSort("status")}>
-                    Status {sortKey === "status" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                    Status {sortKey === "status" ? (sortDir === "asc" ? "â–²" : "â–¼") : ""}
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredProducts.map((p) => {
+                {filteredProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-xs text-slate-400">
+                      {stockSearch.trim()
+                        ? "Tidak ada produk yang cocok dengan pencarian."
+                        : "Belum ada produk aktif di inventori. Tambahkan produk di menu Produk & Kategori."}
+                    </td>
+                  </tr>
+                ) : (
+                filteredProducts.map((p) => {
                   const isOut = p.currentStock <= 0;
                   const isLow = p.currentStock <= p.minimumStock && !isOut;
                   const totalValue = p.currentStock * p.costPrice;
@@ -507,7 +531,8 @@ export function InventoryClient({
                       </td>
                     </tr>
                   );
-                })}
+                })
+                )}
               </tbody>
             </table>
           </div>
@@ -587,7 +612,7 @@ export function InventoryClient({
       {activeTab === "restock" && (
         <div className="max-w-xl mx-auto rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8 shadow-xs">
           <div className="flex items-center gap-3 mb-6">
-            <div className="h-10 w-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center text-emerald-600">
+            <div className="h-10 w-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
               <ArrowDownRight className="h-5 w-5" />
             </div>
             <div>
@@ -620,7 +645,7 @@ export function InventoryClient({
               <select
                 value={restockForm.productId}
                 onChange={(e) => {
-                  const p = products.find((pr) => pr.id === e.target.value);
+                  const p = activeProducts.find((pr) => pr.id === e.target.value);
                   setRestockForm({
                     ...restockForm,
                     productId: e.target.value,
@@ -629,7 +654,7 @@ export function InventoryClient({
                 }}
                 className="h-10 w-full text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 outline-none"
               >
-                {products.map((p) => (
+                {activeProducts.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} (Stok Saat Ini: {p.currentStock} {p.unit})
                   </option>
@@ -757,7 +782,7 @@ export function InventoryClient({
                 onChange={(e) => setAdjustForm({ ...adjustForm, productId: e.target.value })}
                 className="h-10 w-full text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 outline-none"
               >
-                {products.map((p) => (
+                {activeProducts.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} (Stok Saat Ini: {p.currentStock} {p.unit})
                   </option>

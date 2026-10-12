@@ -1,8 +1,219 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   MISYourPOS colour system — single source of truth
+   --------------------------------------------------------------------------
+   Every component styles itself with stock Tailwind utility names
+   (bg-slate-900, text-indigo-600, dark:bg-slate-950, ...). Re-theming is done
+   here and ONLY here: the tokens below replace Tailwind's slate / indigo /
+   rose / emerald / amber / purple / sky ramps, so all ~40 screens follow the
+   new palette without being touched.
+
+   Character — restrained, professional, calm under a long shift:
+     • No pure #000 / #fff on any surface. The darkest step is a deep charcoal
+       and the lightest is a misty off-white.
+     • Neutrals are low-chroma cool greys, so large surfaces read calm rather
+       than clinical.
+     • One confident blue carries every primary action, the active navigation
+       item and chart series 1. Semantic red / green / amber / purple sit
+       beside it, all desaturated just enough to stop vibrating on screen.
+     • Body text clears WCAG AA (>= 4.5:1) in BOTH modes.
+
+   Surface ladder — same class names, different values per mode:
+     page     bg-background  / bg-background   app background
+     surface  white          / slate-900       cards, panels, tables
+     raised   slate-100      / slate-800       sidebar rail, inputs, tabs
+     sunken   slate-50       / slate-950       wells, code blocks, receipts
+     hairline slate-200/300  / slate-700/800   borders and dividers
+   ========================================================================== */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f7f8fa;
+  --foreground: #141a21;
+
+  /* Chrome that is not part of a component: scrollbars, focus ring, selection. */
+  --scrollbar-thumb: #ccd2db;
+  --scrollbar-thumb-hover: #aab3bf;
+  --focus-ring: #255793;
+  --selection-bg: #cfe0f3;
+  --selection-fg: #163252;
+
+  /* ---- Mode-aware mid tones ---------------------------------------------
+     The 400/500 steps of each ramp are the app's "muted / secondary" colour
+     and are used on light surfaces in light mode and on dark surfaces in dark
+     mode. A single hex cannot clear WCAG AA on both a near-white card and a
+     near-black panel, so those steps are declared per mode. Components keep
+     writing plain `text-slate-400` / `dark:text-indigo-400` and get the right
+     value for whichever mode is active. */
+  --tone-neutral-400: #656d7a;   /* 5.2:1 on white, 4.6:1 on the light rail */
+  --tone-neutral-500: #555d6b;   /* 6.3:1 on white, 5.5:1 on the light rail */
+  --tone-accent-400: #3d76b4;    /* 4.7:1 on white */
+  --tone-accent-500: #2b63a6;    /* 6.0:1 on white cards */
+  --tone-danger-400: #dd8b96;
+  --tone-danger-500: #b24a58;    /* 5.2:1 as error text on white cards */
+  --tone-success-400: #35806a;
+  --tone-success-500: #2f7f68;
+  --tone-warn-400: #8f6317;      /* 5.1:1 on white */
+  --tone-warn-500: #7d5613;
+  --tone-purple-400: #6b53c4;    /* 5.7:1 on white */
+
+  /* ---- Charts -----------------------------------------------------------
+     Data-viz colours sit between the light and dark surfaces on purpose, so a
+     single series colour stays readable in either mode. Grid, axis and tooltip
+     chrome is mode-aware and lives here so the dashboard cannot drift out of
+     the theme. */
+  --chart-1: #2f7ac4; /* revenue / primary series */
+  --chart-2: #1f9e78; /* secondary series / QRIS */
+  --chart-3: #b87d0c; /* warning */
+  --chart-4: #c0508f; /* categorical 4 */
+  --chart-5: #7a5cc7; /* categorical 5 */
+  --chart-6: #0e8fa8; /* categorical 6 */
+  --chart-grid: #e1e5eb;
+  --chart-axis: #656d7a;
+  --chart-cursor: #eef4fb;
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-border: #e3e6ec;
+  --chart-tooltip-fg: #1c232b;
+}
+
+.dark {
+  --background: #141a21;
+  --foreground: #eef0f4;
+
+  --scrollbar-thumb: #39414d;
+  --scrollbar-thumb-hover: #4c5766;
+  --focus-ring: #7fa9dd;
+  --selection-bg: #2b4a73;
+  --selection-fg: #e8f0fa;
+
+  /* Same meanings, lightened so muted text stays legible on dark surfaces. */
+  --tone-neutral-400: #98a2b0;   /* 6.1:1 on a dark card */
+  --tone-neutral-500: #8e99a8;   /* 6.2:1 on the dark page */
+  --tone-accent-400: #7fa9dd;    /* 6.6:1 on a dark card */
+  --tone-accent-500: #6f9fd8;    /* 5.6:1 on a dark card */
+  --tone-danger-400: #e6939d;    /* 6.8:1 on a dark card */
+  --tone-danger-500: #e6939d;    /* 6.8:1 as error text on a dark card */
+  --tone-success-400: #6bbfa2;   /* 7.5:1 on a dark card */
+  --tone-success-500: #6bbfa2;
+  --tone-warn-400: #e2b45c;      /* 8.3:1 on a dark card */
+  --tone-warn-500: #d6a748;
+  --tone-purple-400: #a897ec;    /* 6.5:1 on a dark card */
+
+  --chart-grid: #29313b;
+  --chart-axis: #98a2b0;
+  --chart-cursor: #232b35;
+  --chart-tooltip-bg: #232b35;
+  --chart-tooltip-border: #39414d;
+  --chart-tooltip-fg: #e9edf2;
+}
+
+/* ==========================================================================
+   Neutral ramp — replaces Tailwind `slate`
+   Light: 50 page · 100 rail · 200 hairline · 300 strong border · 600 text
+   Dark:  950 page · 900 surface · 800 raised · 700 strong border · 100 text
+   ========================================================================== */
+@theme {
+  --color-slate-50: #f7f8fa;
+  --color-slate-100: #eef0f4;
+  --color-slate-200: #e3e6ec;
+  --color-slate-300: #ccd2db;
+  --color-slate-400: var(--tone-neutral-400);
+  --color-slate-500: var(--tone-neutral-500);
+  --color-slate-600: #4b5462;
+  --color-slate-700: #39414d;
+  --color-slate-800: #2a323c;
+  --color-slate-900: #1c232b;
+  /* Sunken / inset (code blocks, receipt paper, input wells). Kept a step
+     below the page background so nested panels read as recessed, not as a
+     hole punched through the card. */
+  --color-slate-950: #0f141a;
+
+  /* Accent / primary — replaces Tailwind `indigo`.
+     600 is THE primary action colour: 7.3:1 against white label text. */
+  --color-indigo-50: #eef4fb;
+  --color-indigo-100: #dde9f6;
+  --color-indigo-200: #bfd6ee;
+  --color-indigo-300: #96bbe2;
+  --color-indigo-400: var(--tone-accent-400);
+  --color-indigo-500: var(--tone-accent-500);
+  --color-indigo-600: #255793;
+  --color-indigo-700: #1f4a7d;
+  --color-indigo-800: #1a3c67;
+  --color-indigo-900: #163252;
+  --color-indigo-950: #0f2340;
+  /* Default ring colour for Radix / shadcn-style `ring-ring` utilities. */
+  --color-ring: var(--tone-accent-400);
+
+  /* ==========================================================================
+     Semantic ramps — danger / success / warning / secondary / info.
+     The 500 step is deliberately dark enough to work in BOTH directions: as
+     body text on a white card AND as a button background behind white text.
+     Only the text-only steps flip lightness with the mode.
+     ========================================================================== */
+  --color-rose-50: #fdf3f4;
+  --color-rose-100: #fbe7e9;
+  --color-rose-200: #f5d2d7;
+  --color-rose-300: #ecb2ba;
+  --color-rose-400: var(--tone-danger-400);
+  --color-rose-500: var(--tone-danger-500);
+  /* rose-600 is a BUTTON background behind white text (the `destructive`
+     variant), so it must stay dark in both modes — making it mode-aware made
+     white-on-pink unreadable at 2.6:1. Only the text-only 500 flips. */
+  --color-rose-600: #a34350;
+  --color-rose-700: #8f3b47;
+  --color-rose-800: #76333d;
+  --color-rose-900: #622c34;
+  --color-rose-950: #3a181e;
+
+  --color-emerald-50: #eef7f3;
+  --color-emerald-100: #d5eae1;
+  --color-emerald-200: #b0d7c7;
+  --color-emerald-300: #82bea8;
+  --color-emerald-400: var(--tone-success-400);
+  --color-emerald-500: var(--tone-success-500);
+  --color-emerald-600: #2a7160;
+  --color-emerald-700: #255e51;
+  --color-emerald-800: #1f4d43;
+  --color-emerald-900: #1a3f37;
+  --color-emerald-950: #0d2420;
+
+  --color-amber-50: #fdf7ed;
+  --color-amber-100: #f8ecd4;
+  --color-amber-200: #efd9ac;
+  --color-amber-300: #e4c07e;
+  --color-amber-400: var(--tone-warn-400);
+  --color-amber-500: var(--tone-warn-500);
+  --color-amber-600: #6f4c10;
+  --color-amber-700: #5e3f0e;
+  --color-amber-800: #4d3410;
+  --color-amber-900: #3f2b0f;
+  --color-amber-950: #261a07;
+
+  /* Secondary accent — refunds, shift reconciliations, purple badges. */
+  --color-purple-50: #f5f3fd;
+  --color-purple-100: #ebe7fa;
+  --color-purple-200: #d8d1f5;
+  --color-purple-300: #bcb1ee;
+  --color-purple-400: var(--tone-purple-400);
+  --color-purple-500: #5b46ab;
+  --color-purple-600: #4c3a94;
+  --color-purple-700: #40307d;
+  --color-purple-800: #352868;
+  --color-purple-900: #2d2156;
+  --color-purple-950: #1b1440;
+
+  /* Informational — QRIS / non-cash payment markers. */
+  --color-sky-50: #eef7fb;
+  --color-sky-100: #d9edf7;
+  --color-sky-200: #b5dcef;
+  --color-sky-300: #84c4e0;
+  --color-sky-400: #2f8bb5;
+  --color-sky-500: #1a76a2;
+  --color-sky-600: #166588;
+  --color-sky-700: #14536f;
+  --color-sky-800: #13455b;
+  --color-sky-900: #133a4b;
+  --color-sky-950: #0d2531;
 }
 
 /* Class-based dark mode (toggled manually, persisted in localStorage) */
@@ -13,11 +224,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-.dark {
-  --background: #020617;
-  --foreground: #f1f5f9;
 }
 
 html {
@@ -48,19 +254,25 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
-  /* Smoother, more readable color scheme */
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Clear, obvious focus ring for keyboard navigation */
+/* Text selection follows the mode so a drag never leaves a white flash
+   behind in Dark Mode. */
+::selection {
+  background: var(--selection-bg);
+  color: var(--selection-fg);
+}
+
+/* Clear, obvious focus ring for keyboard navigation.
+   Softer than the old 3px solid accent so it guides without glaring. */
 :where(button, a, input, select, textarea, [role="button"]):focus-visible {
-  outline: 3px solid #6366f1;
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   border-radius: 0.5rem;
 }
 
-/* Slightly stronger scrollbars */
 ::-webkit-scrollbar {
   width: 12px;
   height: 12px;
@@ -69,14 +281,44 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--scrollbar-thumb);
   border-radius: 999px;
   border: 3px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--scrollbar-thumb-hover);
   background-clip: content-box;
+}
+
+/* ==========================================================================
+   Recharts — the SVG chrome is driven by the same tokens as the rest of the
+   UI, so grid lines, axis labels and tooltips re-theme with the app. These are
+   plain CSS rules and therefore win over Recharts' presentation attributes.
+   ========================================================================== */
+.recharts-cartesian-grid line {
+  stroke: var(--chart-grid);
+}
+.recharts-cartesian-axis-tick-value {
+  fill: var(--chart-axis);
+}
+.recharts-tooltip-wrapper {
+  outline: none;
+}
+.recharts-tooltip-inner {
+  background: var(--chart-tooltip-bg) !important;
+  border: 1px solid var(--chart-tooltip-border) !important;
+  border-radius: 0.75rem;
+  box-shadow: none;
+}
+.chart-bars .recharts-bar-rectangle {
+  fill: var(--chart-1);
+}
+.chart-pie .recharts-pie-sector:nth-of-type(1) {
+  fill: var(--chart-1);
+}
+.chart-pie .recharts-pie-sector:nth-of-type(2) {
+  fill: var(--chart-2);
 }
 
 /* Make numeric inputs easier to tap/edit on mobile */

@@ -93,7 +93,7 @@ export function AuditClient({ logs }: AuditClientProps) {
             onClick={handleExport}
             className="rounded-xl flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
           >
-            <Download className="h-4 w-4 text-emerald-600" />
+            <Download className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             Ekspor Excel
           </Button>
         </div>
@@ -207,7 +207,7 @@ export function AuditClient({ logs }: AuditClientProps) {
                   Rincian Log: {selectedLog.action}
                 </h3>
                 <p className="text-[11px] text-slate-500 font-mono">
-                  {formatDateTime(selectedLog.createdAt)} • Oleh {selectedLog.user?.name || "Sistem"}
+                  {formatDateTime(selectedLog.createdAt)} â€¢ Oleh {selectedLog.user?.name || "Sistem"}
                 </p>
               </div>
               <button

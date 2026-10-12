@@ -8,6 +8,34 @@ import { createAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
 import { Prisma } from "@prisma/client";
 import { serializeDecimal } from "@/lib/decimal";
 
+/** Narrows a caught value to a known Prisma error code (P2002 = unique). */
+function isPrismaError(error: unknown, code: string): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === code
+  );
+}
+
+/**
+ * The embedded Postgres used in local/dev runs behind a driver that surfaces
+ * FK violations as `PrismaClientUnknownRequestError` with no `code`, so the
+ * usual `P2003` check silently never fires. Match on the message too, otherwise
+ * a concurrent write would collapse into a generic "gagal menghapus" message.
+ */
+function isForeignKeyViolation(error: unknown): boolean {
+  if (isPrismaError(error, "P2003")) return true;
+  const message = error instanceof Error ? error.message : "";
+  return /foreign key constraint|violates (ON DELETE )?RESTRICT/i.test(message);
+}
+
+/** Record-not-found, as reported by Prisma or by the underlying driver. */
+function isRecordNotFound(error: unknown): boolean {
+  if (isPrismaError(error, "P2025")) return true;
+  const message = error instanceof Error ? error.message : "";
+  return /Record to (delete|update) does not exist|RecordNotFound/i.test(message);
+}
+
 // ============================================================
 // CREATE PRODUCT
 // ============================================================
@@ -175,6 +203,177 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
   } catch (error) {
     console.error("Update product error:", error);
     return { success: false, error: "Gagal mengupdate produk" };
+  }
+}
+
+// ============================================================
+// DELETE PRODUCT
+// ============================================================
+
+export interface ProductDeleteResult {
+  success: boolean;
+  error?: string;
+  /** `NOT_FOUND` when the id is stale (already deleted elsewhere / never existed). */
+  code?: "NOT_FOUND" | "HAS_TRANSACTION_HISTORY" | "IN_USE";
+  /** True when the caller should offer "Nonaktifkan" instead of a hard delete. */
+  canDeactivate?: boolean;
+  salesCount?: number;
+  refundCount?: number;
+  /** True when there was nothing left to delete - the desired end state already holds. */
+  alreadyDeleted?: boolean;
+}
+
+/**
+ * Hard-deletes a product together with its stock movements.
+ *
+ * Idempotent: deleting an id that no longer exists resolves to `success` with
+ * `alreadyDeleted`, so the Produk / Inventori / Kasir menus always converge on
+ * the same list instead of erroring out on stale rows.
+ */
+export async function deleteProduct(id: string): Promise<ProductDeleteResult> {
+  const user = await requireRole("OWNER", "ADMIN");
+
+  if (!id) {
+    return { success: false, code: "NOT_FOUND", error: "ID produk tidak valid" };
+  }
+
+  try {
+    const product = await prisma.product.findUnique({
+      where: { id },
+      include: { _count: { select: { saleItems: true, refundItems: true } } },
+    });
+
+    if (!product) {
+      // Nothing to remove - treat as success so the UI stays consistent.
+      return { success: true, alreadyDeleted: true };
+    }
+
+    const { saleItems, refundItems } = product._count;
+
+    // A movement created by a sale/refund still points at this product even if the
+    // sale rows themselves were detached, so it counts as transaction history too.
+    const transactionalMovements = await prisma.stockMovement.count({
+      where: { productId: id, referenceType: { in: ["SALE", "REFUND"] } },
+    });
+
+    if (saleItems > 0 || refundItems > 0 || transactionalMovements > 0) {
+      const parts: string[] = [];
+      if (saleItems > 0) parts.push(`${saleItems} transaksi penjualan`);
+      if (refundItems > 0) parts.push(`${refundItems} refund`);
+      // Can be reached when sale rows were detached but their stock movements remain.
+      if (parts.length === 0) parts.push("riwayat mutasi stok dari penjualan");
+
+      return {
+        success: false,
+        code: "HAS_TRANSACTION_HISTORY",
+        canDeactivate: true,
+        salesCount: saleItems,
+        refundCount: refundItems,
+        error:
+          `"${product.name}" sudah pernah masuk transaksi (${parts.join(", ")}), ` +
+          `jadi tidak bisa dihapus permanen karena akan merusak laporan. ` +
+          `Nonaktifkan saja agar hilang dari Kasir & Inventori.`,
+      };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Stock movements are ledger rows owned by the product. The FK is required
+      // and has no cascade, so they must go first.
+      await tx.stockMovement.deleteMany({ where: { productId: id } });
+      await tx.product.delete({ where: { id } });
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: AUDIT_ACTIONS.PRODUCT_DELETE,
+      entity: "product",
+      entityId: id,
+      previousValue: {
+        sku: product.sku,
+        barcode: product.barcode,
+        name: product.name,
+        categoryId: product.categoryId,
+        unit: product.unit,
+        costPrice: Number(product.costPrice),
+        sellingPrice: Number(product.sellingPrice),
+        currentStock: Number(product.currentStock),
+      },
+    });
+
+    revalidatePath("/", "layout");
+    return { success: true };
+  } catch (error: unknown) {
+    console.error("Delete product error:", error);
+
+    // Someone else deleted it between our read and the write.
+    if (isRecordNotFound(error)) {
+      return { success: true, alreadyDeleted: true };
+    }
+    // Another record started referencing the product in the meantime.
+    if (isForeignKeyViolation(error)) {
+      return {
+        success: false,
+        code: "IN_USE",
+        canDeactivate: true,
+        error:
+          "Produk sudah tercatat pada transaksi lain. Nonaktifkan saja agar disembunyikan dari Kasir & Inventori.",
+      };
+    }
+
+    return { success: false, error: "Gagal menghapus produk" };
+  }
+}
+
+// ============================================================
+// DEACTIVATE PRODUCT (soft delete)
+// ============================================================
+
+/**
+ * Soft delete: flips `isActive` to false so the product disappears from Kasir
+ * and reports while keeping its sales history intact. Idempotent.
+ */
+export async function deactivateProduct(id: string) {
+  const user = await requireRole("OWNER", "ADMIN");
+
+  try {
+    const product = await prisma.product.findUnique({ where: { id } });
+
+    if (!product) {
+      return { success: true, alreadyDeactivated: true };
+    }
+
+    if (!product.isActive) {
+      return { success: true, alreadyDeactivated: true };
+    }
+
+    const updated = await prisma.product.update({
+      where: { id },
+      data: { isActive: false },
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: AUDIT_ACTIONS.PRODUCT_DEACTIVATE,
+      entity: "product",
+      entityId: id,
+      previousValue: { isActive: product.isActive },
+      newValue: { isActive: updated.isActive },
+    });
+
+    revalidatePath("/", "layout");
+    return {
+      success: true,
+      data: serializeDecimal({
+        ...updated,
+        costPrice: Number(updated.costPrice),
+        sellingPrice: Number(updated.sellingPrice),
+        currentStock: Number(updated.currentStock),
+        minimumStock: Number(updated.minimumStock),
+      }),
+    };
+  } catch (error: unknown) {
+    console.error("Deactivate product error:", error);
+    return { success: false, error: "Gagal menonaktifkan produk" };
   }
 }
 
@@ -393,11 +592,178 @@ export async function getCategories() {
   });
 }
 
-export async function createCategory(name: string, description?: string) {
-  await requireRole("OWNER", "ADMIN");
-  return await prisma.category.create({
-    data: { name, description },
-  });
+export async function createCategory(name: string, description?: string | null) {
+  const user = await requireRole("OWNER", "ADMIN");
+
+  const trimmedName = name?.trim();
+  if (!trimmedName) {
+    return { success: false, error: "Nama kategori wajib diisi" };
+  }
+
+  try {
+    const existing = await prisma.category.findUnique({ where: { name: trimmedName } });
+    if (existing) {
+      return { success: false, error: `Kategori "${trimmedName}" sudah ada` };
+    }
+
+    const category = await prisma.category.create({
+      data: { name: trimmedName, description: description?.trim() || null },
+      include: { _count: { select: { products: true } } },
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: AUDIT_ACTIONS.CATEGORY_CREATE,
+      entity: "category",
+      entityId: category.id,
+      newValue: { name: category.name, description: category.description },
+    });
+
+    revalidatePath("/", "layout");
+    return { success: true, data: category };
+  } catch (error: unknown) {
+    console.error("Create category error:", error);
+    const message = error instanceof Error ? error.message : "";
+    if (isPrismaError(error, "P2002") || /unique constraint/i.test(message)) {
+      return { success: false, error: `Kategori "${trimmedName}" sudah ada` };
+    }
+    return { success: false, error: "Gagal membuat kategori" };
+  }
+}
+
+export async function updateCategory(
+  id: string,
+  input: { name?: string; description?: string | null; isActive?: boolean }
+) {
+  const user = await requireRole("OWNER", "ADMIN");
+
+  try {
+    const previous = await prisma.category.findUnique({ where: { id } });
+    if (!previous) {
+      return { success: false, error: "Kategori tidak ditemukan" };
+    }
+
+    const updateData: Prisma.CategoryUpdateInput = {};
+    if (input.name !== undefined) {
+      const trimmedName = input.name.trim();
+      if (!trimmedName) {
+        return { success: false, error: "Nama kategori wajib diisi" };
+      }
+      // Checked up front: the unique-violation code is not surfaced by the
+      // embedded Postgres driver, so the catch block cannot rely on it.
+      if (trimmedName !== previous.name) {
+        const taken = await prisma.category.findUnique({ where: { name: trimmedName } });
+        if (taken) {
+          return { success: false, error: `Kategori "${trimmedName}" sudah dipakai kategori lain` };
+        }
+      }
+      updateData.name = trimmedName;
+    }
+    if (input.description !== undefined) {
+      updateData.description = input.description?.trim() || null;
+    }
+    if (input.isActive !== undefined) {
+      updateData.isActive = input.isActive;
+    }
+
+    const category = await prisma.category.update({
+      where: { id },
+      data: updateData,
+      include: { _count: { select: { products: true } } },
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: AUDIT_ACTIONS.CATEGORY_UPDATE,
+      entity: "category",
+      entityId: id,
+      previousValue: { name: previous.name, description: previous.description, isActive: previous.isActive },
+      newValue: { name: category.name, description: category.description, isActive: category.isActive },
+    });
+
+    revalidatePath("/", "layout");
+    return { success: true, data: category };
+  } catch (error: unknown) {
+    console.error("Update category error:", error);
+    const message = error instanceof Error ? error.message : "";
+    if (isPrismaError(error, "P2002") || /unique constraint/i.test(message)) {
+      return { success: false, error: "Nama kategori sudah digunakan" };
+    }
+    return { success: false, error: "Gagal mengupdate kategori" };
+  }
+}
+
+export interface CategoryDeleteResult {
+  success: boolean;
+  error?: string;
+  code?: "NOT_FOUND" | "NOT_EMPTY";
+  /** How many products are still attached - surfaced so the UI can name them. */
+  productCount?: number;
+  alreadyDeleted?: boolean;
+}
+
+/**
+ * Deletes an empty category. Refuses while products are still attached so a
+ * deletion can never silently orphan catalog entries or stale category filters
+ * in Kasir / Inventori / Laporan.
+ */
+export async function deleteCategory(id: string): Promise<CategoryDeleteResult> {
+  const user = await requireRole("OWNER", "ADMIN");
+
+  if (!id) {
+    return { success: false, code: "NOT_FOUND", error: "ID kategori tidak valid" };
+  }
+
+  try {
+    const category = await prisma.category.findUnique({
+      where: { id },
+      include: { _count: { select: { products: true } } },
+    });
+
+    if (!category) {
+      return { success: true, alreadyDeleted: true };
+    }
+
+    const productCount = category._count.products;
+    if (productCount > 0) {
+      return {
+        success: false,
+        code: "NOT_EMPTY",
+        productCount,
+        error:
+          `Kategori "${category.name}" masih memiliki ${productCount} produk. ` +
+          `Pindahkan atau hapus produknya dulu, baru kategori ini bisa dihapus.`,
+      };
+    }
+
+    await prisma.category.delete({ where: { id } });
+
+    await createAuditLog({
+      userId: user.id,
+      action: AUDIT_ACTIONS.CATEGORY_DELETE,
+      entity: "category",
+      entityId: id,
+      previousValue: { name: category.name, description: category.description },
+    });
+
+    revalidatePath("/", "layout");
+    return { success: true };
+  } catch (error: unknown) {
+    console.error("Delete category error:", error);
+
+    if (isRecordNotFound(error)) {
+      return { success: true, alreadyDeleted: true };
+    }
+    if (isForeignKeyViolation(error)) {
+      return {
+        success: false,
+        code: "NOT_EMPTY",
+        error: "Kategori masih digunakan produk. Pindahkan atau hapus produknya dulu.",
+      };
+    }
+
+    return { success: false, error: "Gagal menghapus kategori" };
+  }
 }
 
 // ============================================================

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Search,
@@ -20,6 +20,8 @@ import {
   Percent,
   X,
   RefreshCw,
+  ChevronUp,
+  ChevronDown,
   QrCode as QrIcon,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
@@ -98,8 +100,27 @@ export function POSClient({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
   const [cart, setCart] = useState<CartItem[]>([]);
+
+  // A product deleted or deactivated from the Katalog/Produk menu also
+  // disappears here (the server only serves `isActive` products). Drop it from
+  // the cart so checkout can never fail on a row that no longer exists.
+  if (cart.length > 0) {
+    const knownProductIds = new Set(products.map((p) => p.id));
+    if (cart.some((item) => !knownProductIds.has(item.productId))) {
+      setCart((prev) => prev.filter((item) => knownProductIds.has(item.productId)));
+    }
+  }
+
+  // A deleted/renamed category must not leave the catalog filtered to nothing.
+  if (selectedCategory !== "ALL" && !categories.some((c) => c.name === selectedCategory)) {
+    setSelectedCategory("ALL");
+  }
   const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [notes, setNotes] = useState("");
+  // Mobile-only: the cart is NOT an overlay sheet. It lives inline in the page
+  // flow underneath the catalog, and the page simply scrolls down to it.
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const cartPanelRef = useRef<HTMLDivElement>(null);
 
   // Checkout modal states
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -114,6 +135,17 @@ export function POSClient({
   const [showReceipt, setShowReceipt] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Mobile: opening the cart reveals it inline below the catalog, so scroll the
+  // page down to it instead of animating a sheet over the catalog.
+  useEffect(() => {
+    if (isCartOpen) {
+      cartPanelRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  }, [isCartOpen]);
 
   // Filtered products
   const filteredProducts = useMemo(() => {
@@ -334,6 +366,8 @@ export function POSClient({
 
       setIsCheckoutOpen(false);
       setShowReceipt(true);
+      // Collapse the inline mobile cart so the receipt is not pushed by it.
+      setIsCartOpen(false);
       clearCart();
     } catch (err: any) {
       setErrorMessage(err?.message || "Terjadi kesalahan sistem saat checkout.");
@@ -343,9 +377,11 @@ export function POSClient({
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-[calc(100vh-5.5rem)] lg:h-[calc(100vh-6.5rem)]">
-      {/* LEFT COLUMN: Catalog & Products */}
-      <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden">
+    <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 lg:pb-0 lg:h-[calc(100vh-6.5rem)]">
+      {/* LEFT COLUMN: Catalog & Products. On mobile the page itself scrolls
+          (no fixed viewport height), otherwise the stacked cart would squeeze
+          this column to nothing and hide every product. */}
+      <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm lg:overflow-hidden">
         {/* Top Header / Search & Category Filters */}
         <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 space-y-3.5 bg-slate-50/50 dark:bg-slate-900/50">
           {/* Active Session Warning Bar if closed */}
@@ -419,8 +455,9 @@ export function POSClient({
           </div>
         </div>
 
-        {/* Product Cards Grid */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+        {/* Product Cards Grid. Scrolls internally on desktop (fixed-height
+            column); on mobile it grows to full height and the page scrolls. */}
+        <div className="flex-1 lg:overflow-y-auto p-4 sm:p-5">
           {filteredProducts.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 py-12 text-center">
               <Package className="h-12 w-12 text-slate-300 dark:text-slate-700 mb-3" />
@@ -538,10 +575,64 @@ export function POSClient({
         </div>
       </div>
 
-      {/* RIGHT COLUMN: Interactive Cart & Checkout Panel */}
-      <div className="w-full lg:w-[380px] xl:w-[420px] flex flex-col bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden shrink-0">
+      {/* Mobile: collapsed summary dock.
+          It is `sticky`, not `fixed` — it never covers the catalog while you
+          browse, it just rides along at the bottom of the scrolling page and
+          the page scrolls straight down to the cart when you tap it. */}
+      {!isCartOpen && (
+        <div className="lg:hidden sticky bottom-0 z-20 pt-2 pb-[env(safe-area-inset-bottom)]">
+          <button
+            type="button"
+            onClick={() => setIsCartOpen(true)}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg shadow-slate-900/10 dark:shadow-black/40 cursor-pointer active:scale-[0.99] transition-transform"
+          >
+            <div className="relative shrink-0">
+              <div className="h-10 w-10 rounded-xl bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900">
+                <ShoppingCart className="h-5 w-5" />
+              </div>
+              {cart.filter((it) => it.quantity > 0).length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center">
+                  {cart.filter((it) => it.quantity > 0).length}
+                </span>
+              )}
+            </div>
+            <div className="flex-1 text-left min-w-0">
+              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                {cart.filter((it) => it.quantity > 0).length} item dipilih
+              </p>
+              <p className="text-lg font-black text-indigo-600 dark:text-indigo-400 leading-tight">
+                {formatCurrency(grandTotal)}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                Lihat
+              </span>
+              <ChevronUp className="h-5 w-5 text-slate-400" />
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* Cart & Checkout Panel.
+          lg+    : a normal right-hand column, always fully visible.
+          mobile : plain in-flow section underneath the catalog — the page
+                   scrolls down to it, no sheet, no backdrop, no sideways
+                   slide. Hidden while collapsed because the dock above
+                   already represents it. */}
+      <div
+        ref={cartPanelRef}
+        className={[
+          isCartOpen ? "flex" : "hidden",
+          "lg:flex flex-col bg-white dark:bg-slate-900 shadow-sm",
+          "rounded-3xl border border-slate-200/80 dark:border-slate-800",
+          // keeps the sticky header from covering the panel after scrolling
+          "scroll-mt-20 lg:scroll-mt-24",
+          "lg:w-[380px] xl:w-[420px] lg:shrink-0 lg:overflow-hidden",
+        ].join(" ")}
+      >
         {/* Cart Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+        <div className="flex p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
           <div className="flex items-center gap-2.5">
             <div className="h-9 w-9 rounded-xl bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900">
               <ShoppingCart className="h-5 w-5" />
@@ -556,19 +647,31 @@ export function POSClient({
             </div>
           </div>
 
-          {cart.length > 0 && (
+          <div className="flex items-center gap-2 shrink-0">
+            {cart.length > 0 && (
+              <button
+                onClick={clearCart}
+                className="text-xs text-rose-500 hover:text-rose-600 dark:hover:text-rose-300 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
+              >
+                <Trash2 className="h-4 w-4" />
+                Kosongkan
+              </button>
+            )}
+
+            {/* Back to the docked summary on mobile */}
             <button
-              onClick={clearCart}
-              className="text-xs text-rose-500 hover:text-rose-600 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
+              onClick={() => setIsCartOpen(false)}
+              aria-label="Tutup keranjang"
+              className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
             >
-              <Trash2 className="h-4 w-4" />
-              Kosongkan
+              <ChevronDown className="h-5 w-5" />
             </button>
-          )}
+          </div>
         </div>
 
-        {/* Cart Items List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {/* Cart Items List. On mobile it grows to its natural height and the page
+            scrolls; only on lg (fixed-height column) does it scroll inside. */}
+        <div className="flex-1 lg:min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 py-16 text-center">
               <ShoppingCart className="h-12 w-12 text-slate-300 dark:text-slate-800 mb-3" />
@@ -602,11 +705,13 @@ export function POSClient({
                     </p>
                   </div>
                   <button
+                    type="button"
                     onClick={() => removeFromCart(item.productId)}
-                    className="text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 p-2.5 rounded-xl cursor-pointer transition-colors"
-                    aria-label="Hapus produk"
+                    aria-label={`Hapus ${item.productName} dari keranjang`}
+                    className="shrink-0 flex items-center gap-1.5 h-11 px-3 rounded-xl text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-500/15 border border-rose-200 dark:border-rose-500/25 hover:bg-rose-100 hover:text-rose-800 dark:hover:bg-rose-500/25 dark:hover:text-rose-200 active:scale-95 cursor-pointer transition-colors whitespace-nowrap"
                   >
-                    <Trash2 className="h-5 w-5" />
+                    <Trash2 className="h-4 w-4 shrink-0" />
+                    Hapus
                   </button>
                 </div>
 

@@ -89,6 +89,9 @@ services:
       # Required. Used by NextAuth to sign the session token.
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required — set it in .env.docker}
       # Must match the URL users actually visit, including any proxy prefix.
+      # Not cosmetic: NextAuth builds the post-login redirect from it, so a
+      # mismatch (e.g. localhost while browsing on 192.168.x.x) logs you into
+      # the wrong host. Set it to the LAN address when other devices connect.
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       # Trust the proxy's host header so it works behind nginx/Caddy.
       AUTH_TRUST_HOST: "true"
@@ -98,8 +101,11 @@ services:
       # which needs full ICU — present in the node:22-alpine base image.
       TZ: ${TZ:-Asia/Jakarta}
     ports:
-      # Set BIND_ADDRESS=127.0.0.1 when a reverse proxy (nginx/Caddy) is the
-      # only intended entry point, so the app cannot be reached directly.
+      # BIND_ADDRESS defaults to 0.0.0.0 so the app is reachable from other
+      # devices on the same LAN/Wi-Fi (open http://<host-ip>:<APP_PORT>).
+      # Set BIND_ADDRESS=127.0.0.1 to restrict it to this machine only — do
+      # that on untrusted/public Wi-Fi, and whenever a reverse proxy
+      # (nginx/Caddy) is the intended entry point.
       - "${BIND_ADDRESS:-0.0.0.0}:${APP_PORT:-3000}:3000"
     healthcheck:
       test:

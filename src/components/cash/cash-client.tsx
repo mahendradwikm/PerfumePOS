@@ -145,7 +145,7 @@ export function CashClient({
         setCurrentSession(newSes as CashSession);
         setIsOpenModalVisible(false);
         router.refresh();
-        // Update the header status chip immediately — it reads the session on
+        // Update the header status chip immediately â€” it reads the session on
         // the client, so router.refresh() alone would leave it stale.
         notifyCashSessionChanged(newSes);
       }
@@ -256,7 +256,7 @@ export function CashClient({
                   </Badge>
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Petugas: <span className="font-semibold text-slate-800 dark:text-slate-200">{currentSession.user?.name || "Kasir"}</span> • Dibuka sejak: {formatDateTime(currentSession.sessionDate)}
+                  Petugas: <span className="font-semibold text-slate-800 dark:text-slate-200">{currentSession.user?.name || "Kasir"}</span> â€¢ Dibuka sejak: {formatDateTime(currentSession.sessionDate)}
                 </p>
               </div>
             </div>
@@ -308,7 +308,7 @@ export function CashClient({
               <p className="text-2xl font-extrabold text-white mt-1">
                 {formatCurrency(expectedCash)}
               </p>
-              <p className="text-[10px] text-indigo-200 mt-0.5">
+              <p className="text-[10px] text-indigo-100 mt-0.5">
                 Modal + Penjualan Tunai
               </p>
             </div>
@@ -518,7 +518,7 @@ export function CashClient({
                   <span>Modal Awal:</span>
                   <span>{formatCurrency(currentSession.openingCash)}</span>
                 </div>
-                <div className="flex justify-between text-emerald-600 font-semibold">
+                <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
                   <span>Penjualan Tunai:</span>
                   <span>+{formatCurrency(currentSession.cashSales)}</span>
                 </div>

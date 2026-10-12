@@ -195,7 +195,7 @@ export function ExpensesClient({
             onClick={handleExport}
             className="rounded-xl flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
           >
-            <Download className="h-4 w-4 text-emerald-600" />
+            <Download className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             Ekspor Excel
           </Button>
 

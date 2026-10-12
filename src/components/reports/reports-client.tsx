@@ -85,8 +85,17 @@ export function ReportsClient({
     setKPIs(initialKPIs);
   }
 
-  // Colors for charts
-  const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4"];
+  // Colors for charts. These mirror the --chart-* tokens in globals.css so the
+  // SVG stays in the same theme as the rest of the dashboard (and so it picks
+  // up Dark Mode automatically without any JS).
+  const COLORS = [
+    "var(--chart-1)",
+    "var(--chart-2)",
+    "var(--chart-3)",
+    "var(--chart-4)",
+    "var(--chart-5)",
+    "var(--chart-6)",
+  ];
 
   // Excel Export: delegated to the server action for styled, chart-embedded output
   const handleExport = async (which: "week" | "month" | "year" | "day") => {
@@ -133,7 +142,7 @@ export function ReportsClient({
                 className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
                   period === opt.key
                     ? "bg-indigo-600 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
                 }`}
               >
                 {opt.label}
@@ -168,7 +177,7 @@ export function ReportsClient({
               onClick={() => setExportOpen((v) => !v)}
               className="rounded-2xl flex items-center gap-2 text-sm font-bold cursor-pointer"
             >
-              <Download className="h-5 w-5 text-emerald-600" />
+              <Download className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
               {isExporting ? "Mengekspor..." : "Ekspor Laporan Lengkap"}
             </Button>
             {exportOpen && (
@@ -213,7 +222,7 @@ export function ReportsClient({
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500">Laba Kotor (Gross Profit)</span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-600">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
               {kpis.grossProfitMargin}% Margin
             </span>
           </div>
@@ -305,17 +314,26 @@ export function ReportsClient({
           <div className="h-64 w-full">
             {salesTrends.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={salesTrends}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.15} />
+                <BarChart data={salesTrends} className="chart-bars">
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis
                     tick={{ fontSize: 11 }}
                     tickFormatter={(val) => `Rp${(val / 1000).toLocaleString()}k`}
                   />
                   <Tooltip
+                    cursor={{ fill: "var(--chart-cursor)" }}
+                    contentStyle={{
+                      background: "var(--chart-tooltip-bg)",
+                      border: "1px solid var(--chart-tooltip-border)",
+                      borderRadius: 12,
+                      fontSize: 12,
+                    }}
+                    labelStyle={{ color: "var(--chart-tooltip-fg)" }}
+                    itemStyle={{ color: "var(--chart-tooltip-fg)" }}
                     formatter={(val: any) => [formatCurrency(Number(val)), "Penjualan"]}
                   />
-                  <Bar dataKey="sales" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="sales" fill={COLORS[0]} radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -340,7 +358,7 @@ export function ReportsClient({
           <div className="h-52 w-full my-auto">
             {kpis.grossSales > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+                <PieChart className="chart-pie">
                   <Pie
                     data={[
                       { name: "Tunai (Cash)", value: kpis.cashSales },
@@ -353,10 +371,20 @@ export function ReportsClient({
                     paddingAngle={4}
                     dataKey="value"
                   >
-                    <Cell fill="#6366f1" />
-                    <Cell fill="#10b981" />
+                    <Cell fill={COLORS[0]} />
+                    <Cell fill={COLORS[1]} />
                   </Pie>
-                  <Tooltip formatter={(val: any) => formatCurrency(Number(val))} />
+                  <Tooltip
+                    contentStyle={{
+                      background: "var(--chart-tooltip-bg)",
+                      border: "1px solid var(--chart-tooltip-border)",
+                      borderRadius: 12,
+                      fontSize: 12,
+                    }}
+                    labelStyle={{ color: "var(--chart-tooltip-fg)" }}
+                    itemStyle={{ color: "var(--chart-tooltip-fg)" }}
+                    formatter={(val: any) => formatCurrency(Number(val))}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
@@ -368,7 +396,7 @@ export function ReportsClient({
 
           <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
             <div className="flex items-center gap-2">
-              <div className="h-3 w-3 rounded-full bg-indigo-600" />
+              <div className="h-3 w-3 rounded-full" style={{ background: COLORS[0] }} />
               <div>
                 <p className="text-slate-400 text-[10px]">Tunai</p>
                 <p className="font-bold text-slate-800 dark:text-slate-200">
@@ -377,7 +405,7 @@ export function ReportsClient({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <div className="h-3 w-3 rounded-full bg-emerald-500" />
+              <div className="h-3 w-3 rounded-full" style={{ background: COLORS[1] }} />
               <div>
                 <p className="text-slate-400 text-[10px]">QRIS</p>
                 <p className="font-bold text-slate-800 dark:text-slate-200">
@@ -419,7 +447,7 @@ export function ReportsClient({
                   className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 text-xs"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="h-6 w-6 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 font-extrabold flex items-center justify-center text-xs">
+                    <span className="h-6 w-6 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-extrabold flex items-center justify-center text-xs">
                       {idx + 1}
                     </span>
                     <div>

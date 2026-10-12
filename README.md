@@ -141,6 +141,19 @@ npm run db:push
 npm run db:seed
 ```
 
+> **Tidak bisa login / halaman kosong setelah `npm run dev`?**
+> Gejalanya: `Can't reach database server at localhost:5432` di terminal, dan
+> `/login` selalu mengembalikan 401. PostgreSQL-nya belum jalan.
+>
+> `npm run dev` dan `npm start` kini menjalankan preflight otomatis
+> (`scripts/ensure-db.mjs`): kalau port `5432` belum menjawab, embedded
+> PostgreSQL dinyalakan di background dan dev server menunggu sampai siap.
+> Kalau DB sudah jalan, preflight ini hanya mem-print status lalu lanjut —
+> jadi tetap aman dijalankan berulang-ulang.
+>
+> Jalankan `npm run db:start` di terminal terpisah hanya jika ingin melihat log
+> database secara langsung.
+
 ### 4b. 🔍 Mengakses Database
 
 Database adalah **PostgreSQL** yang berjalan lokal di port `5432`.
